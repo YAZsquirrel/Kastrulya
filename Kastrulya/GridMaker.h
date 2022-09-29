@@ -3,7 +3,6 @@
 typedef double real;
 
 struct bound {
-   int edge_num;
    int knots_num[2];
    real value1;      // ug, th, ub
    real value2;      // beta

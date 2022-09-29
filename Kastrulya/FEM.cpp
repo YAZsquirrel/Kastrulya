@@ -242,15 +242,16 @@ void FEM::CreateM(element& elem)
 
 void FEM::CreateG(element& elem)
 {
-   real x1 = mesh->knots[elem.knots_num[0]].x;
-   real x2 = mesh->knots[elem.knots_num[1]].x;
-   real y1 = mesh->knots[elem.knots_num[0]].y;
-   real y2 = mesh->knots[elem.knots_num[2]].y;
-   real hx = x2 - x1, hy = y2 - y1, 
-   cxy = hx / hy / 6.,
-   cyx = hy / hx / 6.;
+   real r1 = mesh->knots[elem.knots_num[0]].x;
+   real r2 = mesh->knots[elem.knots_num[1]].x;
+   real z1 = mesh->knots[elem.knots_num[0]].y;
+   real z2 = mesh->knots[elem.knots_num[2]].y;
+   real h = r2 - r1, t = z2 - z1;
+   
 
-   localG[0][0] = localG[1][1] = localG[2][2] = localG[3][3] = 2. * ( cyx + cxy );
+   localG[0][0] = h * h / 12. / t + h * r1 / 3. / t + t / 6. + r1 * t / 3 / h; 
+   localG[1][1] = 
+   localG[2][2] = localG[3][3] = 2. * ( cyx + cxy );
    localG[3][0] = localG[2][1] = localG[1][2] = localG[0][3] = - cyx - cxy;
    localG[0][1] = localG[1][0] = localG[3][2] = localG[2][3] = -2. * cyx + cxy;
    localG[1][3] = localG[3][1] = localG[0][2] = localG[2][0] = cyx - 2. * cxy;
