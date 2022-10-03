@@ -137,6 +137,10 @@
     <ClInclude Include="GridMaker.h" />
     <ClInclude Include="Math_structs.h" />
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="GridDescription.txt" />
+    <Text Include="Materials.txt" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

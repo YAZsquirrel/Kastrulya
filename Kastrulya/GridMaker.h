@@ -21,7 +21,7 @@ struct knot
 struct element {
    real lam = 0., gam = 0.;
    const int local_knots_num = 4;
-   int knots_num[4];
+   int knots_num[4]{};
 
    bool containsKnot(int n)
    {
@@ -41,6 +41,13 @@ struct element {
          knots_num[i] = elem.knots_num[i];
       return *this;
    }
+
+   element(real gamma, real lambda, int knots_nums[4]) : lam(lambda), gam(gamma)
+   {
+      for (int i = 0; i < local_knots_num; i++)
+         knots_num[i] = knots_nums[i];
+   }
+   element() : lam(0), gam(0){}
 };
 
 class Mesh

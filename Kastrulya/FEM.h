@@ -40,9 +40,9 @@ private:
    void AddFirstBounds();
    void AddSecondBounds();
    void AddThirdBounds();
-   void AddToA(element& elem);
-   void CreateSLAE();
-   void AssembleMatricies(element& elem);
+   void AddToGlobalMatricies(element& elem);
+   void CreateSLAE(bool isTimed);
+   void AssembleMatricies(bool isTimed);
    void CreateM(element& elem);
    void CreateG(element& elem);
    void CreateExtraG(element& elem);
@@ -50,7 +50,8 @@ private:
 
    Matrix* A, *M, *G;
    std::vector<real> b;
-   std::vector<real> q;
+   std::vector<real> q1;
+   std::vector<real> q2;
    std::vector<real> qt;
    real t_last, th, u0;
    Mesh* mesh;
@@ -60,7 +61,7 @@ public:
    int GetKnotsNum() { return num_of_knots; }
    int GetHexasNum() { return num_of_FE; }
 
-   std::vector<real>& GetKnots() { return q; };
+   std::vector<real>& GetKnots() { return q1; };
    FEM(Mesh* _mesh);
    void SolveElliptic();
    void SolveParabolic();

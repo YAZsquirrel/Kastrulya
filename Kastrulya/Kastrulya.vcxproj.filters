@@ -39,4 +39,12 @@
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <Text Include="Materials.txt">
+      <Filter>Файлы ресурсов</Filter>
+    </Text>
+    <Text Include="GridDescription.txt">
+      <Filter>Файлы ресурсов</Filter>
+    </Text>
+  </ItemGroup>
 </Project>
