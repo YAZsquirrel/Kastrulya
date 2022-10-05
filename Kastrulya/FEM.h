@@ -52,7 +52,6 @@ private:
    std::vector<real> b;
    std::vector<real> q1;
    std::vector<real> q2;
-   std::vector<real> qt;
    real t_last, th, u0;
    Mesh* mesh;
 
