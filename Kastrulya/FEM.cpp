@@ -1,6 +1,6 @@
 #include "FEM.h"
 #include <string>
-FEM::FEM(Mesh* _mesh)
+FEM::FEM()
 {
    //std::ifstream fknots("Knots.txt");
    //std::ifstream felems("elements.txt");
@@ -10,14 +10,40 @@ FEM::FEM(Mesh* _mesh)
    std::ifstream fparams("EnvParams.txt");
    fparams >> un;
    fparams.close();
-
+   std::ifstream ftime("TimeGridDescr.txt");
+   ftime >> t_last >> th >> tr;
+   ftime.close();
+   th = t_last / th;
+   mesh = new Mesh();
    mesh->MakeMesh();
+   num_of_knots = mesh->knots.size();
+   num_of_FE = mesh->elems.size();
+   //u0 = mesh->bounds3[0].value1;
 
    A = MakeSparseFormat(4, mesh->knots.size(), mesh);
-   M = MakeSparseFormat(4, mesh->knots.size(), mesh);
-   G = MakeSparseFormat(4, mesh->knots.size(), mesh);
+   // A => G, M
+   {
+      G = new Matrix();
+      M = new Matrix();
+      G->dim = M->dim = A->dim;
+      M->ig.resize(A->ig.size());
+      G->ig.resize(A->ig.size());
+      M->jg.resize(A->jg.size());
+      G->jg.resize(A->jg.size());
+      copy(M->ig, A->ig);
+      copy(G->ig, A->ig);
+      copy(M->jg, A->jg);
+      copy(G->jg, A->jg);
+      G->di.resize(A->dim);
+      M->di.resize(A->dim);
+      M->l.resize(A->l.size());
+      G->l.resize(A->l.size());
+      M->u.resize(A->u.size());
+      G->u.resize(A->u.size());
+   }
 
    q1.resize(num_of_knots, 0.);
+   q2.resize(num_of_knots, 0.);
    b.resize(num_of_knots, 0.);
 
    //Mij = [this](real ksi, real etta, real theta, int i, int j, int knot_num[8])
@@ -88,8 +114,8 @@ void FEM::SolveParabolic()
 {
    //CreateSLAE();
    SolveElliptic();
-   
-   for  (real t = 0, int tn = 0; t < t_last; t += th, tn++)
+   int tn = 0;
+   for  (real t = 0; t < t_last; t += th, tn++)
    {
       if (tn > 1)
       {
@@ -97,9 +123,13 @@ void FEM::SolveParabolic()
          SolveSLAE(A, q2, b);
       }
       std::string str = "./Results/Result_layer_" + std::to_string(tn) + ".txt";
-      std::ofstream out(str);
+      std::ofstream out(str, std::ofstream::in);
+      out.close();
+      out.open(str, std::ofstream::trunc);
+
       Output(out);
       out.close();
+      copy(q1, q2);
    }
 }
 
@@ -111,12 +141,12 @@ void FEM::Output(std::ofstream& out)
    out.width(15);
    out << "y";
    out.width(15);
-   out << "z";
-   out.width(15);
+   //out << "z";
+   //out.width(15);
    out << "q";
    out.width(15);
    out << "\n";
-   out << std::setprecision(14);
+   out << std::setprecision(7);
 
    for (int i = 0; i < num_of_knots; i++)
    {
@@ -124,10 +154,11 @@ void FEM::Output(std::ofstream& out)
       out << mesh->knots[i].x;
       out.width(15);
       out << mesh->knots[i].y;
-      out.width(15);
-      out << mesh->knots[i].z;
-      out.width(15);
+      out.width(30);
+      //out << mesh->knots[i].z;
+      //out.width(15);
       out << std::scientific;
+      out.width(15);
       out << q1[i];
       out.width(15);
       out << "\n";
@@ -193,7 +224,7 @@ void FEM::AddSecondBounds()
       }
       else
       {
-         h = z2 - z1;
+         h = r1 * (z2 - z1);
          localMb[0][0] = h / 3.;  localMb[0][1] = h / 6.;
          localMb[1][0] = h / 6.;  localMb[1][1] = h / 3.;
       }
@@ -215,7 +246,7 @@ void FEM::AddThirdBounds()
          z2 = std::max(mesh->knots[bound.knots_num[0]].y, mesh->knots[bound.knots_num[1]].y),
          h;
 
-      bool isRadiusAxis = r2 - r1 > 1e-14;
+      bool isRadiusAxis = r2 - r1 > 1e-10;
 
       if (isRadiusAxis)
       {
@@ -227,7 +258,7 @@ void FEM::AddThirdBounds()
       }
       else
       {
-         h = z2 - z1;
+         h = r1 * (z2 - z1);
          localMb[0][0] = h / 3.;  localMb[0][1] = h / 6.;
          localMb[1][0] = h / 6.;  localMb[1][1] = h / 3.;
       }
@@ -250,8 +281,7 @@ void FEM::CreateSLAE(bool isTimed)
       elem = mesh->elems[i];
       CreateG(elem);
       CreateM(elem);
-      if (isTimed)
-         AddToGlobalMatricies(elem);
+      AddToGlobalMatricies(elem, isTimed);
       //AddToA(elem);   
       //AddFirstBounds();
    }
@@ -280,7 +310,7 @@ void FEM::AssembleMatricies(bool isTimed)
       b[i] += Mq[i];
 }
 
-void FEM::AddToGlobalMatricies(element& elem)
+void FEM::AddToGlobalMatricies(element& elem, bool isTimed)
 {
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
@@ -288,6 +318,8 @@ void FEM::AddToGlobalMatricies(element& elem)
          //localA[i][j] = localG[i][j] + localM[i][j];
          AddElement(M, elem.knots_num[i], elem.knots_num[j], localM[i][j]);
          AddElement(G, elem.knots_num[i], elem.knots_num[j], localG[i][j]);
+         if (isTimed)
+            AddElement(G, elem.knots_num[i], elem.knots_num[j], localGx[i][j]);
          //AddElement(A, elem.knots_num[i], elem.knots_num[j], localA[i][j]);
       }
 //AddLocal(A, elem->knots_num, localA, 1);
@@ -330,14 +362,14 @@ void FEM::CreateG(element& elem)
         hr_3t = h * r1 / t / 3.,
         rt_3h = r1 * t / h / 3.;
 
-   localG[0][0] = localG[2][2] = h2_4t / 3. + hr_3t      + t / 6.  + rt_3h;
-   localG[1][1] = localG[3][3] = h2_4t      + hr_3t      + t / 6.  + rt_3h;
+   localG[0][0] = localG[2][2] =  h2_4t / 3. + hr_3t      + t / 6.  + rt_3h;
+   localG[1][1] = localG[3][3] =  h2_4t      + hr_3t      + t / 6.  + rt_3h;
    localG[3][0] = localG[2][1] = 
-   localG[1][2] = localG[0][3] = h2_4t / 3. + hr_3t / 2. + t / 12. + rt_3h / 2.;
+   localG[1][2] = localG[0][3] = -h2_4t / 3. - hr_3t / 2. - t / 12. - rt_3h / 2.;
    localG[0][1] = localG[1][0] = 
-   localG[3][2] = localG[2][3] = h2_4t / 3. + hr_3t / 2. + t / 6.  + rt_3h;
-   localG[1][3] = localG[3][1] = h2_4t      + hr_3t      + t / 12. + rt_3h / 2.;
-   localG[0][2] = localG[2][0] = h2_4t / 3. + hr_3t      + t / 12. + rt_3h / 2.;
+   localG[3][2] = localG[2][3] =  h2_4t / 3. + hr_3t / 2. - t / 6.  - rt_3h;
+   localG[1][3] = localG[3][1] = -h2_4t      - hr_3t      + t / 12. + rt_3h / 2.;
+   localG[0][2] = localG[2][0] = -h2_4t / 3. - hr_3t      + t / 12. + rt_3h / 2.;
 
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
@@ -348,6 +380,44 @@ void FEM::CreateG(element& elem)
 void FEM::CreateExtraG(element& elem)
 {
 
+   knot v1 = mesh->GetVelocity(mesh->knots[elem.knots_num[0]], 0);
+   knot v2 = mesh->GetVelocity(mesh->knots[elem.knots_num[1]], 0);
+   knot v3 = mesh->GetVelocity(mesh->knots[elem.knots_num[2]], 0);
+   knot v4 = mesh->GetVelocity(mesh->knots[elem.knots_num[3]], 0);
+
+   real r1 = mesh->knots[elem.knots_num[0]].x;
+   real r2 = mesh->knots[elem.knots_num[1]].x;
+   real z1 = mesh->knots[elem.knots_num[0]].y;
+   real z2 = mesh->knots[elem.knots_num[2]].y;
+   real h = r2 - r1, t = z2 - z1;
+   real ht2_9 = h * t * t / 9.,
+        t2p_6 = t * t * r1 / 6.,
+        t3_8 = t * t * t / 8.,
+        h2p_6 = h * h * r1 / 6.;
+
+   localGx[0][0] = v1.x * (-ht2_9 / 2. - t2p_6     ) + v1.y * (-t3_8 / 3. - h2p_6     );
+   localGx[1][0] = v2.x * (-ht2_9      - t2p_6     ) + v1.y * (-t3_8 / 3. - h2p_6 / 2.);
+   localGx[2][0] = v3.x * (-ht2_9 / 4. - t2p_6 / 2.) + v1.y * (-t3_8 / 3. - h2p_6     );
+   localGx[3][0] = v4.x * (-ht2_9 / 2. - t2p_6 / 2.) + v1.y * (-t3_8 / 3. - h2p_6 / 2.);
+                           
+   localGx[0][1] = v1.x * (-ht2_9 / 2. - t2p_6     ) + v2.y * (t3_8 / 3. + h2p_6 / 2.);
+   localGx[1][1] = v2.x * (-ht2_9      - t2p_6     ) + v2.y * (t3_8      + h2p_6     );
+   localGx[2][1] = v3.x * (-ht2_9 / 4. - t2p_6 / 2.) + v2.y * (t3_8 / 3. + h2p_6 / 2.);
+   localGx[3][1] = v4.x * (-ht2_9 / 2. - t2p_6 / 2.) + v2.y * (t3_8      + h2p_6     );
+                           
+   localGx[0][2] = v1.x * ( ht2_9 / 4. + t2p_6 / 2.) + v3.y * (-t3_8 / 3. - h2p_6);
+   localGx[1][2] = v2.x * ( ht2_9 / 2. + t2p_6 / 2.) + v3.y * (-t3_8 / 3. - h2p_6 / 2.);
+   localGx[2][2] = v3.x * ( ht2_9 / 2. + t2p_6     ) + v3.y * (-t3_8 / 3. - h2p_6);
+   localGx[3][2] = v4.x * ( ht2_9 / 1. + t2p_6     ) + v3.y * (-t3_8 / 3. - h2p_6 / 2.);
+                           
+   localGx[0][3] = v1.x * ( ht2_9 / 4. + t2p_6 / 2.) + v4.y * (t3_8 / 3. + h2p_6 / 2.);
+   localGx[1][3] = v2.x * ( ht2_9 / 2. + t2p_6 / 2.) + v4.y * (t3_8      + h2p_6     );
+   localGx[2][3] = v3.x * ( ht2_9 / 2. + t2p_6     ) + v4.y * (t3_8 / 3. + h2p_6 / 2.);
+   localGx[3][3] = v4.x * ( ht2_9 / 1. + t2p_6     ) + v4.y * (t3_8      + h2p_6     );
+
+   for (int i = 0; i < 4; i++)
+      for (int j = 0; j < 4; j++)
+         localGx[i][j] *= elem.gam;//* Integrate(Gij, i, j, elem->knots_num);
 }
 
 void FEM::Createb(element& elem)

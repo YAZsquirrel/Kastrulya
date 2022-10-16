@@ -12,11 +12,11 @@ private:
    real ug(knot& knot_) {return u0;}
    int num_of_knots, num_of_FE, un;
 
-   real localM[4][4]; 
-   real localMb[2][2];
-   real localG[4][4];
-   real localXG[4][4];
-   real localA[4][4];
+   real localM[4][4]{};
+   real localMb[2][2]{};
+   real localG[4][4]{};
+   real localGx[4][4]{};
+   real localA[4][4]{};
 
    // for non-standart meshes
    //real J[2][2];
@@ -40,7 +40,7 @@ private:
    void AddFirstBounds();
    void AddSecondBounds();
    void AddThirdBounds();
-   void AddToGlobalMatricies(element& elem);
+   void AddToGlobalMatricies(element& elem, bool isTimed);
    void CreateSLAE(bool isTimed);
    void AssembleMatricies(bool isTimed);
    void CreateM(element& elem);
@@ -52,7 +52,7 @@ private:
    std::vector<real> b;
    std::vector<real> q1;
    std::vector<real> q2;
-   real t_last, th, u0;
+   real t_last, th, tr, u0;
    Mesh* mesh;
 
 
@@ -61,7 +61,7 @@ public:
    int GetHexasNum() { return num_of_FE; }
 
    std::vector<real>& GetKnots() { return q1; };
-   FEM(Mesh* _mesh);
+   FEM();
    void SolveElliptic();
    void SolveParabolic();
    //void GetSolutionOnPlane(real z);
