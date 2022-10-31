@@ -220,13 +220,14 @@ void FEM::AddSecondBounds()
            r2 = std::max(mesh->knots[bound.knots_num[0]].x, mesh->knots[bound.knots_num[1]].x),
            z1 = std::min(mesh->knots[bound.knots_num[0]].y, mesh->knots[bound.knots_num[1]].y),
            z2 = std::max(mesh->knots[bound.knots_num[0]].y, mesh->knots[bound.knots_num[1]].y),
-           h;
+           h, h2;
 
       bool isRadiusAxis = r2 - r1 > 1e-14;
 
       if (isRadiusAxis)
       {
          h = r2 - r1;
+         h2 = pow(r2, 2.) - pow(r1, 2.);
          real h2_4 = h*h/4.,
               hr_3 = h*r1/3.;
          localMb[0][0] = hr_3      + h2_4 / 3.;  localMb[0][1] = hr_3 / 2. + h2_4 / 3.;
@@ -235,6 +236,7 @@ void FEM::AddSecondBounds()
       else
       {
          h = z2 - z1;
+         h2 = pow(z2, 2.) - pow(z1, 2.);
          real rh_3 = r1 * h / 3.;
          localMb[0][0] = rh_3;       localMb[0][1] = rh_3 / 2.;
          localMb[1][0] = rh_3 / 2.;  localMb[1][1] = rh_3;
@@ -243,7 +245,7 @@ void FEM::AddSecondBounds()
       
 
       for (int i = 0; i < 2; i++)
-         b[bound.knots_num[i]] += bound.value1 * (localMb[i][0] + localMb[i][1]) / h;
+         b[bound.knots_num[i]] += bound.value1 * (localMb[i][0] + localMb[i][1]) / (h2 * 3.1415926535897);
    }
 }
 
@@ -251,25 +253,27 @@ void FEM::AddThirdBounds()
 {
    for (auto& bound : mesh->bounds3)
    {
-      real r1 = std::min(mesh->knots[bound.knots_num[0]].x, mesh->knots[bound.knots_num[1]].x),
+    real r1 = std::min(mesh->knots[bound.knots_num[0]].x, mesh->knots[bound.knots_num[1]].x),
          r2 = std::max(mesh->knots[bound.knots_num[0]].x, mesh->knots[bound.knots_num[1]].x),
          z1 = std::min(mesh->knots[bound.knots_num[0]].y, mesh->knots[bound.knots_num[1]].y),
          z2 = std::max(mesh->knots[bound.knots_num[0]].y, mesh->knots[bound.knots_num[1]].y),
-         h;
+         h, h2;
 
       bool isRadiusAxis = r2 - r1 > 1e-10;
 
       if (isRadiusAxis)
       {
          h = r2 - r1;
-         real h2_4 = h * h / 4.,
-            hr_3 = h * r1 / 3.;
-         localMb[0][0] = hr_3 + h2_4 / 3.;  localMb[0][1] = hr_3 / 2. + h2_4 / 3.;
-         localMb[1][0] = hr_3 / 2. + h2_4 / 3.;  localMb[1][1] = hr_3 + h2_4;
+         h2 = pow(r2, 2.) - pow(r1, 2.);
+         real h2_4 = h*h/4.,
+              hr_3 = h*r1/3.;
+         localMb[0][0] = hr_3      + h2_4 / 3.;  localMb[0][1] = hr_3 / 2. + h2_4 / 3.;
+         localMb[1][0] = hr_3 / 2. + h2_4 / 3.;  localMb[1][1] = hr_3      + h2_4;
       }
       else
       {
          h = z2 - z1;
+         h2 = pow(z2, 2.) - pow(z1, 2.);
          real rh_3 = r1 * h / 3.;
          localMb[0][0] = rh_3;       localMb[0][1] = rh_3 / 2.;
          localMb[1][0] = rh_3 / 2.;  localMb[1][1] = rh_3;
@@ -278,7 +282,7 @@ void FEM::AddThirdBounds()
 
       for (int i = 0; i < 2; i++)
       {
-         b[bound.knots_num[i]] += bound.value1 * bound.value2 * (localMb[i][0] + localMb[i][1]) / h;
+         b[bound.knots_num[i]] += bound.value1 * bound.value2 * (localMb[i][0] + localMb[i][1]) / (h2 * 3.1415926535897);
          for (int j = 0; j < 2; j++)
             AddElement(A, bound.knots_num[i], bound.knots_num[j], localMb[i][j]);
       }
