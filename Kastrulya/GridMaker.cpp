@@ -211,7 +211,7 @@ void Mesh::MakeMesh()
 
    for (auto& el : elems)
       for (size_t i = 0; i < 4; i++)
-         el.knots[i] = &knots[el.knots_num[i]];
+         el.knots[i] = knots[el.knots_num[i]];
 
    SetElemParameters();
    RemoveNullKnots();
@@ -232,13 +232,15 @@ void Mesh::SetBoundConds()
          if (abs(be.k1.x - be.k2.x) > 1e-10) // ------
          {  
             if (onEdge = abs(be.k1.y - ks[0].y) < 1e-10 // на том же yl
-               && (be.k1.x < ks[0].x && ks[0].x < be.k2.x))
+               && (be.k1.x - ks[0].x < 1e-10 && ks[0].x - be.k2.x < 1e-10)
+               && (be.k1.x - ks[1].x < 1e-10 && ks[1].x - be.k2.x < 1e-10))
             {
                kn[0] = e.knots_num[0];
                kn[1] = e.knots_num[1];
             }
-            else if (onEdge = abs(be.k1.y - ks[1].y) < 1e-10 // на том же yr
-               && (be.k1.x < ks[1].x && ks[1].x < be.k2.x))
+            else if (onEdge = abs(be.k1.y - ks[2].y) < 1e-10 // на том же yr
+               && (be.k1.x - ks[2].x < 1e-10 && ks[2].x - be.k2.x < 1e-10)
+               && (be.k1.x - ks[3].x < 1e-10 && ks[3].x - be.k2.x < 1e-10))
             {
                kn[0] = e.knots_num[2];
                kn[1] = e.knots_num[3];
@@ -247,13 +249,15 @@ void Mesh::SetBoundConds()
          else
          {
             if (onEdge = abs(be.k1.x - ks[0].x) < 1e-10 // на том же xl
-               && (be.k1.y < ks[0].y && ks[0].y < be.k2.y))
+               && (be.k1.y - ks[0].y < 1e-10 && ks[0].y - be.k2.y < 1e-10)
+               && (be.k1.y - ks[2].y < 1e-10 && ks[2].y - be.k2.y < 1e-10))
             {
                kn[0] = e.knots_num[0];
                kn[1] = e.knots_num[2];
             }
-            else if (onEdge = abs(be.k1.x - ks[3].x) < 1e-10 // на том же xr
-               && (be.k1.y < ks[3].y && ks[3].y < be.k2.y))
+            else if (onEdge = abs(be.k1.x - ks[1].x) < 1e-10 // на том же xr
+               && (be.k1.y - ks[1].y < 1e-10 && ks[1].y - be.k2.y < 1e-10)
+               && (be.k1.y - ks[3].y < 1e-10 && ks[3].y - be.k2.y < 1e-10))
             {
                kn[0] = e.knots_num[1];
                kn[1] = e.knots_num[3];
@@ -289,8 +293,8 @@ void Mesh::SetElemParameters()
    for (auto& e : elems)
    {
       int n_mat = -1;
-      knot center = knot((e.knots[0]->x + e.knots[3]->x) / 2., 
-                              (e.knots[0]->y + e.knots[3]->y) / 2., 0);
+      knot center = knot((e.knots[0].x + e.knots[3].x) / 2., 
+                              (e.knots[0].y + e.knots[3].y) / 2., 0);
       for (auto& a : areas)
       {
          if (a.X1 < center.x && center.x < a.X2 &&

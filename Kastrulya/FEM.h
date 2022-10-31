@@ -40,7 +40,7 @@ private:
    void AddFirstBounds();
    void AddSecondBounds();
    void AddThirdBounds();
-   void AddToGlobalMatricies(element& elem, bool isTimed);
+   void AddToGlobalMatricies(element& elem);
    void CreateSLAE(bool isTimed);
    void AssembleMatricies(bool isTimed);
    void CreateM(element& elem);
@@ -48,8 +48,9 @@ private:
    void CreateExtraG(element& elem);
    void Createb(element& elem);
 
-   Matrix* A, *M, *G;
+   Matrix* A, *M, *G, *Gx;
    std::vector<real> b;
+   std::vector<real> d;
    std::vector<real> q1;
    std::vector<real> q2;
    real t_last, th, tr, u0;

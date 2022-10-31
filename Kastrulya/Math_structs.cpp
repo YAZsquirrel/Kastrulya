@@ -10,7 +10,7 @@ namespace maths
       // set connection table
       std::vector<std::set<int>> map;
       map.resize(elemsize);
-      for (auto Elem : mesh->elems)
+      for (auto& Elem : mesh->elems)
          for (int i = 0; i < N; i++)
             for (int j = 0; j < N; j++)
                if (Elem.knots_num[i] > Elem.knots_num[j])
@@ -96,7 +96,7 @@ namespace maths
 
    void SolveSLAE(Matrix* M, std::vector<real>& q, std::vector<real>& b)
    {
-      std::vector<real> z, r, p, ff, & x = q;
+      std::vector<real> z, r, p, ff, &x = q;
       z.resize(M->dim);
       r.resize(M->dim);
       p.resize(M->dim);
