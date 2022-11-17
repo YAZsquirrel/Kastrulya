@@ -4,6 +4,7 @@ typedef double real;
 
 struct bound {
    int knots_num[2];
+   int n_mat = -1;
    real value1;      // ug, th, ub
    real value2;      // beta
 };
@@ -54,7 +55,7 @@ struct knot
 };
 
 struct element {
-   real lam = 0., gam = 0.;
+   real lam = 0., gam = 0., f = 0.;
    const int local_knots_num = 4;
    int n_mat = -1;
    int knots_num[4]{};
@@ -79,17 +80,19 @@ struct element {
       if (this == &elem) return *this;
       lam = elem.lam;
       gam = elem.gam;
+      f = elem.f;
       for (int i = 0; i < local_knots_num; i++)
          knots_num[i] = elem.knots_num[i];
       return *this;
    }
 
-   element(real gamma, real lambda, int knots_nums[4]) : lam(lambda), gam(gamma)
+   element(real gamma, real lambda, real _f, int knots_nums[4]) 
+      : lam(lambda), gam(gamma), f(_f)
    {
       for (int i = 0; i < local_knots_num; i++)
          knots_num[i] = knots_nums[i];
    }
-   element() : lam(0), gam(0){}
+   element() : lam(0), gam(0), f(0){}
 };
 
 class Mesh
@@ -173,9 +176,9 @@ private:
    void RemoveNullKnots();
    struct material
    {
-      real Cp, Ro, lam, beta;
-      material(real _Cp, real _Ro, real _l, real _beta) 
-         : Cp(_Cp), Ro(_Ro), lam(_l), beta(_beta){}
+      real Cp, Ro, lam, beta, f;
+      material(real _Cp, real _Ro, real _l, real _beta, real _f) 
+         : Cp(_Cp), Ro(_Ro), lam(_l), beta(_beta), f(_f) {}
    }; 
    struct area
    {
@@ -191,10 +194,11 @@ private:
       real v1, v2; 
    };
 
-   real max_v;
+   real max_v = 0;
    std::vector<material> mats;
    std::vector<area> areas;
    std::vector<boundEdge> bes;
+   std::vector<real> X, Y;
 
    //void Set???();
 

@@ -10,12 +10,12 @@ void Mesh::MakeMesh()
 
    for (int i = 0; i < k; i++)
    {
-      real Cp, Ro, l, beta, v;
-      fmat >> Cp >> Ro >> l >> beta >> v;
+      real Cp, Ro, l, beta, v, f;
+      fmat >> Cp >> Ro >> l >> beta >> f >> v;
       if (v > 1e-10)
          max_v = v;
 
-      material mat(Cp, Ro, l, beta);
+      material mat(Cp, Ro, l, beta, f);
       mats.push_back(mat);
    }
    fmat.close();
@@ -24,7 +24,6 @@ void Mesh::MakeMesh()
    int nX, nY;
    fgrid >> nX >> nY;
 
-   std::vector<real> X, Y;
    std::vector<real> Xs, Ys;
    std::vector<real> Xr, Yr;
    X.reserve(nX);
@@ -77,19 +76,19 @@ void Mesh::MakeMesh()
    {
       int bound_n;
       real value1, value2;
-      real p1, p2, q;
+      int p1, p2, q;
       bool axis;
       fgrid >> bound_n >> value1 >> value2 >> p1 >> p2 >> q >> axis;
       boundEdge b;
       if (!axis)
       {
-         b.k1 = knot(p1, q, 0.0);
-         b.k2 = knot(p2, q, 0.0);
+         b.k1 = knot(X[p1], Y[q], 0.0);
+         b.k2 = knot(X[p2], Y[q], 0.0);
       }
       else
       {
-         b.k1 = knot(q, p1, 0.0);
-         b.k2 = knot(q, p2, 0.0);
+         b.k1 = knot(X[q], Y[p1], 0.0);
+         b.k2 = knot(X[q], Y[p2], 0.0);
       }
       b.v1 = value1;
       b.v2 = value2;
@@ -104,9 +103,9 @@ void Mesh::MakeMesh()
    for (size_t i = 0; i < nAreas; i++)
    {
       int mat_n; 
-      real x1, x2, y1, y2;
+      int x1, x2, y1, y2;
       fgrid >> mat_n >> x1 >> x2 >> y1 >> y2;
-      area a(mat_n, x1, x2, y1, y2);
+      area a(mat_n, X[x1], X[x2], Y[y1], Y[y2]);
       areas.push_back(a);
    }
    fgrid.close();
@@ -270,6 +269,7 @@ void Mesh::SetBoundConds()
             b.knots_num[1] = kn[1];
             b.value1 = be.v1;
             b.value2 = be.v2;
+            b.n_mat = e.n_mat;
             switch (be.n_bound)
             {
                case 1: 
@@ -307,6 +307,7 @@ void Mesh::SetElemParameters()
          e.n_mat = n_mat;
          e.gam = mats[n_mat].Cp * mats[n_mat].Ro;
          e.lam = mats[n_mat].lam;
+         e.f = mats[n_mat].f;
       }
    }
 

@@ -11,7 +11,7 @@ namespace maths {
    struct Matrix {
       std::vector<real> l, u, di;
       std::vector<int> ig, jg;
-      size_t dim;
+      size_t dim = 0;
    };
 
 

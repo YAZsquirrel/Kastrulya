@@ -1,4 +1,6 @@
 #pragma once
+//#define DEBUG2
+
 #include "Math_structs.h"
 //#include <functional>
 #include <iomanip>
@@ -8,8 +10,8 @@ using namespace maths;
 class FEM
 {
 private:
-   real f(knot& knot_) {return 0;}
-   real ug(knot& knot_) {return u0;}
+   //real f(knot& knot_) {return 0;}
+   //real ug(knot& knot_) {return ;}
    int num_of_knots, num_of_FE, un;
 
    real localM[4][4]{};
@@ -17,6 +19,15 @@ private:
    real localG[4][4]{};
    real localGx[4][4]{};
    real localA[4][4]{};
+
+#ifdef DEBUG2
+   real f(knot& k, element& e);
+   real bound1func(knot &k, int n_mat);
+   real bound2func(knot& k, int n_mat);
+   real bound3func(knot& k, int n_mat);
+   real bound3funcbeta(knot& k, int n_mat);
+#endif // DEBUG
+
 
    // for non-standart meshes
    //real J[2][2];
@@ -53,7 +64,7 @@ private:
    std::vector<real> d;
    std::vector<real> q1;
    std::vector<real> q2;
-   real t_last, th, tr, u0;
+   real t_last, th, tr, u0 = 0;
    Mesh* mesh;
 
 
