@@ -270,6 +270,7 @@ void Mesh::SetBoundConds()
             b.value1 = be.v1;
             b.value2 = be.v2;
             b.n_mat = e.n_mat;
+            b.n_test = e.n_test;
             switch (be.n_bound)
             {
                case 1: 
@@ -307,7 +308,7 @@ void Mesh::SetElemParameters()
          e.n_mat = n_mat;
          e.gam = mats[n_mat].Cp * mats[n_mat].Ro;
          e.lam = mats[n_mat].lam;
-         e.f = mats[n_mat].f;
+         e.n_test = mats[n_mat].n_test;
       }
    }
 

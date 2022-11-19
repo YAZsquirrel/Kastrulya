@@ -5,6 +5,7 @@ typedef double real;
 struct bound {
    int knots_num[2];
    int n_mat = -1;
+   int n_test = -1;
    real value1;      // ug, th, ub
    real value2;      // beta
 };
@@ -55,7 +56,8 @@ struct knot
 };
 
 struct element {
-   real lam = 0., gam = 0., f = 0.;
+   real lam = 0., gam = 0.;
+   int n_test = 0.;
    const int local_knots_num = 4;
    int n_mat = -1;
    int knots_num[4]{};
@@ -80,19 +82,20 @@ struct element {
       if (this == &elem) return *this;
       lam = elem.lam;
       gam = elem.gam;
-      f = elem.f;
+      n_test = elem.n_test;
+      n_mat = elem.n_mat;
       for (int i = 0; i < local_knots_num; i++)
          knots_num[i] = elem.knots_num[i];
       return *this;
    }
 
-   element(real gamma, real lambda, real _f, int knots_nums[4]) 
-      : lam(lambda), gam(gamma), f(_f)
+   element(real gamma, real lambda, int _n_mat_test, int knots_nums[4])
+      : lam(lambda), gam(gamma), n_test(_n_mat_test)
    {
       for (int i = 0; i < local_knots_num; i++)
          knots_num[i] = knots_nums[i];
    }
-   element() : lam(0), gam(0), f(0){}
+   element() : lam(0), gam(0), n_test(0){}
 };
 
 class Mesh
@@ -176,9 +179,10 @@ private:
    void RemoveNullKnots();
    struct material
    {
-      real Cp, Ro, lam, beta, f;
-      material(real _Cp, real _Ro, real _l, real _beta, real _f) 
-         : Cp(_Cp), Ro(_Ro), lam(_l), beta(_beta), f(_f) {}
+      real Cp, Ro, lam, beta;
+      int n_test;
+      material(real _Cp, real _Ro, real _l, real _beta, real _n_test) 
+         : Cp(_Cp), Ro(_Ro), lam(_l), beta(_beta), n_test(_n_test) {}
    }; 
    struct area
    {

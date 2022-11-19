@@ -1,5 +1,7 @@
 #pragma once
-//#define DEBUG2
+
+#define DEBUG2
+#define DEBUG
 
 #include "Math_structs.h"
 //#include <functional>
@@ -21,11 +23,11 @@ private:
    real localA[4][4]{};
 
 #ifdef DEBUG2
-   real f(knot& k, element& e);
-   real bound1func(knot &k, int n_mat);
-   real bound2func(knot& k, int n_mat);
-   real bound3func(knot& k, int n_mat);
-   real bound3funcbeta(knot& k, int n_mat);
+   real f(knot& k, element& e, real time);
+   real bound1func(knot &k, real time, int n_mat);
+   real bound2func(knot& k, real time, int n_mat);
+   real bound3func(knot& k, real time, int n_mat);
+   real bound3funcbeta(knot& k, real time, int n_mat);
 #endif // DEBUG
 
 
@@ -48,16 +50,16 @@ private:
    //std::function<real(real, real, real, int, int, int[4])> Gij;
    //std::function<real(real, real, real, int, int, int[4])> Mij;
 
-   void AddFirstBounds();
-   void AddSecondBounds();
-   void AddThirdBounds();
+   void AddFirstBounds(real time);
+   void AddSecondBounds(real time);
+   void AddThirdBounds(real time);
    void AddToGlobalMatricies(element& elem);
    void CreateSLAE(bool isTimed);
-   void AssembleMatricies(bool isTimed);
+   void AssembleMatricies(bool isTimed, real time);
    void CreateM(element& elem);
    void CreateG(element& elem);
    void CreateExtraG(element& elem);
-   void Createb(element& elem);
+   void Createb(element& elem, real time);
 
    Matrix* A, *M, *G, *Gx;
    std::vector<real> b;
