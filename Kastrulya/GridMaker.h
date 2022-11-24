@@ -57,7 +57,7 @@ struct knot
 
 struct element {
    real lam = 0., gam = 0.;
-   int n_test = 0.;
+   int n_test = 0;
    const int local_knots_num = 4;
    int n_mat = -1;
    int knots_num[4]{};
@@ -179,10 +179,10 @@ private:
    void RemoveNullKnots();
    struct material
    {
-      real Cp, Ro, lam, beta;
+      real Cp, Ro, lam;
       int n_test;
-      material(real _Cp, real _Ro, real _l, real _beta, real _n_test) 
-         : Cp(_Cp), Ro(_Ro), lam(_l), beta(_beta), n_test(_n_test) {}
+      material(real _Cp, real _Ro, real _l,  int _n_test) 
+         : Cp(_Cp), Ro(_Ro), lam(_l), n_test(_n_test) {}
    }; 
    struct area
    {

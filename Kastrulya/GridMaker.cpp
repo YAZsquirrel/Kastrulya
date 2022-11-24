@@ -10,12 +10,13 @@ void Mesh::MakeMesh()
 
    for (int i = 0; i < k; i++)
    {
-      real Cp, Ro, l, beta, v, f;
-      fmat >> Cp >> Ro >> l >> beta >> f >> v;
-      if (v > 1e-10)
+      real Cp, Ro, l, v;
+      int n_test;
+      fmat >> Cp >> Ro >> l  >> n_test >> v;
+      if (v > 1e-4)
          max_v = v;
 
-      material mat(Cp, Ro, l, beta, f);
+      material mat(Cp, Ro, l, n_test);
       mats.push_back(mat);
    }
    fmat.close();
@@ -75,10 +76,15 @@ void Mesh::MakeMesh()
    for (size_t i = 0; i < nBound; i++)
    {
       int bound_n;
-      real value1, value2;
+      real value1, value2 = 0.;
       int p1, p2, q;
       bool axis;
-      fgrid >> bound_n >> value1 >> value2 >> p1 >> p2 >> q >> axis;
+      fgrid >> bound_n;
+      if (bound_n == 3)
+         fgrid >> value1 >> value2 >> p1 >> p2 >> q >> axis;
+      else
+         fgrid >> value1 >> p1 >> p2 >> q >> axis;
+         
       boundEdge b;
       if (!axis)
       {

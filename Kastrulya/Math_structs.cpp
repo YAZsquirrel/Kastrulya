@@ -114,7 +114,7 @@ namespace maths
       MatxVec(p, M, z);
       res = sqrt(scalar(r, r)) / sqrt(scalar(b, b));
 
-      for (k = 1; k < 100000 && res > eps; k++)
+      for (k = 1; k < 1000000 && res > eps; k++)
       {
          lastres = res;
          skp = scalar(p, p);

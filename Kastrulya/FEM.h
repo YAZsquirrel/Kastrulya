@@ -1,10 +1,10 @@
 #pragma once
 
 #define DEBUG2
-#define DEBUG
+//#define DEBUG
 
 #include "Math_structs.h"
-//#include <functional>
+#include <functional>
 #include <iomanip>
 #include <cmath>
 using namespace maths;
@@ -14,9 +14,10 @@ class FEM
 private:
    //real f(knot& knot_) {return 0;}
    //real ug(knot& knot_) {return ;}
-   int num_of_knots, num_of_FE, un;
+   int num_of_knots, num_of_FE, utest;
 
    real localM[4][4]{};
+   real localC[4][4]{};
    real localMb[2][2]{};
    real localG[4][4]{};
    real localGx[4][4]{};
@@ -29,26 +30,6 @@ private:
    real bound3func(knot& k, real time, int n_mat);
    real bound3funcbeta(knot& k, real time, int n_mat);
 #endif // DEBUG
-
-
-   // for non-standart meshes
-   //real J[2][2];
-   //real Jgrad_i[2];
-   //real gradi[2];
-   //real Jgrad_j[2];
-   //real gradj[2];
-   //inline real det_J();
-   //real prime_by_var(int what, int varOnFE, int knot_num[4], real ksi, real etta, real tetha);
-   //inline int mu(int index);
-   //inline int v(int index);
-   //inline int nu(int index);
-   //real W(int index, real alpha);
-   //real d_phi(int index, int what, real ksi, real etta, real tetha);
-   //inline real phi(int index, real ksi, real etta, real tetha);
-   //void calc_grad(int ij, int index, real ksi, real etta, real tetha);
-   //real Integrate2D(const std::function<real(real, real, int, int, int[4])> f, int i, int j, int knot_num[4]);
-   //std::function<real(real, real, real, int, int, int[4])> Gij;
-   //std::function<real(real, real, real, int, int, int[4])> Mij;
 
    void AddFirstBounds(real time);
    void AddSecondBounds(real time);
@@ -78,7 +59,6 @@ public:
    FEM();
    void SolveElliptic();
    void SolveParabolic();
-   //void GetSolutionOnPlane(real z);
    void Output(std::ofstream& out);
 
 };
