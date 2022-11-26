@@ -38,7 +38,7 @@ real FEM::f(knot& k, element& e, real t)
             return - 1. / k.x;  // G + M
          else return 0;
       case 13:
-         return 1.; // 1 ????     // G + M
+         return 1.375; // 1 ????     // G + M
       case 14:
          return 1.; // 1 ????     // G + M
       case 15:
@@ -67,7 +67,7 @@ real FEM::bound1func(knot& k, real t, int n_test)
       // t ->
       case 11: return k.x * t;
       case 12: return k.x;
-      case 13: return t;
+      case 13: return 1.0 * t;
       case 14: return k.y + t;      // +
       case 15: return k.y;      // +
 

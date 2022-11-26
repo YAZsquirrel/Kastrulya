@@ -3,9 +3,9 @@
 FEM::FEM()
 {
    std::ifstream ftime("TimeGridDescr.txt");
-   ftime >> t_last >> th >> tr >> u0 >> utest;
+   ftime >> t_last >> dt >> tr >> u0 >> utest;
    ftime.close();
-   th = th > 1e-10 ? t_last / th : 0.0;
+   dt = dt > 1e-10 ? t_last / dt : 0.0;
    mesh = new Mesh();
    mesh->MakeMesh();
    num_of_knots = mesh->knots.size();
@@ -75,12 +75,10 @@ void FEM::SolveParabolic()
    std::string str = "./Results/Result_layer_";
 
    std::vector<real> zero;
-   std::vector<real> temp;
    zero.resize(num_of_knots, 0.0);
-   temp.resize(num_of_knots, 0.0);
 
    real t = 0;
-   for (; abs(t - th - t_last) > 1e-12; t += th, tn++)
+   for (; abs(t - dt - t_last) > 1e-12; t += dt, tn++)
    {
       copy(b, zero);
       if (tn > 0)
@@ -315,7 +313,7 @@ void FEM::CreateSLAE(bool isTimed)
 
 void FEM::AssembleMatricies(bool isTimed, real time)
 {
-   real mulM = isTimed ? 1. / th : 1.;
+   real mulM = isTimed ? 1. / dt : 1.;
    real mulGx = isTimed ? 1.0 : 0.0;
    for (int i = 0; i < A->l.size(); i++)
    {
@@ -362,30 +360,18 @@ void FEM::CreateM(element& elem)
    real z2 = mesh->knots[elem.knots_num[2]].y;
    real h = r2 - r1, t = z2 - z1;
    real h2t_12 = h * h * t / 12., 
-        htr_9 = h * t * r1 / 9;
+        htr_36 = h * t * r1 / 36.;
 
-   //localM[0][0] = localM[2][2] = h2t_12 / 3. + htr_9;        // +
-   //localM[1][1] = localM[3][3] = h2t_12      + htr_9;        // +
-   //localM[3][0] = localM[0][3] =                             // +
-   //localM[1][2] = localM[2][1] = h2t_12 / 6. + htr_9 / 4.;   // +
-   //localM[0][1] = localM[1][0] =                             // -
-   //localM[2][3] = localM[3][2] = h2t_12 / 3. + htr_9 / 2.;   //
-   //localM[0][2] = localM[2][0] = h2t_12 / 6. + htr_9 / 2.;   //
-   //localM[1][3] = localM[3][1] = h2t_12 / 2. + htr_9 / 2.;   //
-
-   // 2 2 1 1 
-   // 2 6 1 3
-   // 1 1 2 2
-   // 1 3 2 6 
-
-   localC[0][0] = localC[1][1] = h2t_12 / 3. + htr_9;       // +
-   localC[2][2] = localC[3][3] = h2t_12      + htr_9;       // +
-   localC[3][0] = localC[0][3] =                            // +
-   localC[1][2] = localC[2][1] = h2t_12 / 6. + htr_9 / 4.;  // +
-   localC[0][1] = localC[1][0] = h2t_12 / 6. + htr_9 / 2.;  // +
-   localC[2][3] = localC[3][2] = h2t_12 / 2. + htr_9 / 2.;  // +
+   localC[0][0] = 
+   localC[1][1] = h2t_12 * 2. + htr_36 * 4.;       // +
+   localC[2][2] = 
+   localC[3][3] = h2t_12 * 6. + htr_36 * 4.;       // +
+   localC[0][3] = localC[3][0] =                            // +
+   localC[1][2] = localC[2][1] = h2t_12      + htr_36;  // +
    localC[0][2] = localC[2][0] =                            //
-   localC[1][3] = localC[3][1] = h2t_12 / 3. + htr_9 / 2.;  //
+   localC[1][3] = localC[3][1] = h2t_12 * 2. + htr_36 * 2.;  //
+   localC[0][1] = localC[1][0] = h2t_12      + htr_36 * 2.;  // +
+   localC[2][3] = localC[3][2] = h2t_12 * 3. + htr_36 * 2.;  // +
 
    // 2 1 2 1
    // 1 2 1 2
@@ -406,18 +392,30 @@ void FEM::CreateG(element& elem)
    real z1 = mesh->knots[elem.knots_num[0]].y;
    real z2 = mesh->knots[elem.knots_num[2]].y;
    real h = r2 - r1, t = z2 - z1;
-   real h2_4t = h * h / t / 4.,
-        hr_3t = h * r1 / t / 3.,
-        rt_3h = r1 * t / h / 3.;
+   //real h2_4t = h * h / t / 4.,
+   //     hr_3t = h * r1 / t / 3.,
+   //     rt_3h = r1 * t / h / 3.;
+   //
+   //localG[0][0] = localG[2][2] =  h2_4t / 3. + hr_3t      + t / 6.  + rt_3h;
+   //localG[1][1] = localG[3][3] =  h2_4t      + hr_3t      + t / 6.  + rt_3h;
+   //localG[3][0] = localG[2][1] = 
+   //localG[1][2] = localG[0][3] = -h2_4t / 3. - hr_3t / 2. - t / 12. - rt_3h / 2.;
+   //localG[0][1] = localG[1][0] = 
+   //localG[3][2] = localG[2][3] =  h2_4t / 3. + hr_3t / 2. - t / 6.  - rt_3h;
+   //localG[1][3] = localG[3][1] = -h2_4t      - hr_3t      + t / 12. + rt_3h / 2.;
+   //localG[0][2] = localG[2][0] = -h2_4t / 3. - hr_3t      + t / 12. + rt_3h / 2.;
+   real ht2r_12hk = t * (2 * r1 + h) / h / 12.,
+        hr_6t = h * r1 / t / 6.,
+        h2_12t = h * h / t / 12.;
+   localG[0][0] = localG[2][2] = 2. * ht2r_12hk + 2. * hr_6t +      h2_12t;
+   localG[1][1] = localG[3][3] = 2. * ht2r_12hk + 2. * hr_6t + 3. * h2_12t;
+   localG[1][2] = localG[2][1] = 
+   localG[0][3] = localG[3][0] = - ht2r_12hk - hr_6t - h2_12t;
+   localG[0][1] = localG[1][0] =
+   localG[2][3] = localG[3][2] =  ht2r_12hk + hr_6t + h2_12t;
+   localG[1][3] = localG[3][1] =  ht2r_12hk - 2. * hr_6t - 3. * h2_12t;
+   localG[0][2] = localG[2][0] =  ht2r_12hk - 2. * hr_6t - h2_12t;
 
-   localG[0][0] = localG[2][2] =  h2_4t / 3. + hr_3t      + t / 6.  + rt_3h;
-   localG[1][1] = localG[3][3] =  h2_4t      + hr_3t      + t / 6.  + rt_3h;
-   localG[3][0] = localG[2][1] = 
-   localG[1][2] = localG[0][3] = -h2_4t / 3. - hr_3t / 2. - t / 12. - rt_3h / 2.;
-   localG[0][1] = localG[1][0] = 
-   localG[3][2] = localG[2][3] =  h2_4t / 3. + hr_3t / 2. - t / 6.  - rt_3h;
-   localG[1][3] = localG[3][1] = -h2_4t      - hr_3t      + t / 12. + rt_3h / 2.;
-   localG[0][2] = localG[2][0] = -h2_4t / 3. - hr_3t      + t / 12. + rt_3h / 2.;
 
 
    for (int i = 0; i < 4; i++)
