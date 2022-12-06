@@ -38,7 +38,7 @@ real FEM::f(knot& k, element& e, real t)
             return - 1. / k.x;  // G + M
          else return 0;
       case 13:
-         return 1.375; // 1 ????     // G + M
+         return 1; // 1 ????     // G + M
       case 14:
          return 1.; // 1 ????     // G + M
       case 15:

@@ -114,7 +114,7 @@ public:
            y2 = areas[waterAreaNum].Y2;
 
       knot kn = knot(0.0, 0.0, 0.0);
-      if (x1 - k.x > 1e-10 || k.x - x2 > 1e-10 || y1 - k.y > 1e-10 || k.y - y2 > 1e-10)
+      if (x2 <= k.x || k.x <= x1 || y2 <= k.y || k.y <= y1)
          return kn;
 
       knot c = knot((x2 + x1) / 2.,

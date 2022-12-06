@@ -1,6 +1,6 @@
 #pragma once
 
-#define DEBUG2
+//#define DEBUG2
 //#define DEBUG
 
 #include "Math_structs.h"
