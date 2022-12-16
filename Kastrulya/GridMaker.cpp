@@ -25,7 +25,7 @@ void Mesh::MakeMesh()
    int nX, nY;
    fgrid >> nX >> nY;
 
-   std::vector<real> Xs, Ys;
+   std::vector<int> Xs, Ys;
    std::vector<real> Xr, Yr;
    X.reserve(nX);
    Y.reserve(nY);
@@ -136,8 +136,8 @@ void Mesh::MakeMesh()
       bool isRegular = !(abs(Xr[i - 1] - 1.) > 1e-10);
       real xl = X[i - 1],
            xr = X[i],
-           xh = (xr - xl) / Xs[i - 1];
-      real xb1 = isRegular ? xh :
+           xh = xr - xl;
+      real xb1 = isRegular ? xh / Xs[i - 1] :
                              xh * (1. - Xr[i - 1]) / (1. - pow(Xr[i - 1], Xs[i - 1]));
       real x = xl + xb1;
       X_full.push_back(x);
@@ -155,8 +155,8 @@ void Mesh::MakeMesh()
       bool isRegular = !(abs(Yr[j - 1] - 1.) > 1e-10);
       real yl = Y[j - 1], 
            yr = Y[j],
-           yh = (yr - yl) / Ys[j - 1];
-      real yb1 = isRegular ? yh :
+           yh = yr - yl;
+      real yb1 = isRegular ? yh / Ys[j - 1] :
                              yh * (1. - Yr[j - 1]) / (1. - pow(Yr[j - 1], Ys[j - 1]));
       real y = yl + yb1;
       Y_full.push_back(y);
