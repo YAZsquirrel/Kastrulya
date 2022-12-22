@@ -184,20 +184,18 @@ namespace maths
       Matrix *LU = MakeDenseFormat(A->dim);
       // L 
 
-#pragma omp parallel for    
+//#pragma omp parallel for
       for (int i = 0; i < LU->dim; i++)
       {
-#pragma omp parallel for
+//#pragma omp parallel for
          for (int j = 0; j < LU->dim; j++)
          {
             if (i <= j) // U
             {
                real sum = 0.;
-
 #pragma omp parallel for reduction (+:sum)
                for (int k = 0; k < i; k++)
                   sum += LU->dense[i][k] * LU->dense[k][j];
-
                LU->dense[i][j] = A->dense[i][j] - sum;
             }
             else // L
@@ -454,7 +452,7 @@ namespace maths
       }
       else
       {
-#pragma omp parallel for  
+//#pragma omp parallel for  
          for (int i = 0; i < M->dim; i++)
          {  
             real sum = 0;
@@ -490,7 +488,7 @@ namespace maths
       }
       else
       {
-#pragma omp parallel for
+//#pragma omp parallel for reduction(-:sum)
          for (int i = M->dim - 1; i >= 0; i--)
          {
             real sum = b[i];

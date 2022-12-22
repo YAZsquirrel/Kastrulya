@@ -475,45 +475,45 @@ void FEM::CreateExtraG(element& elem)
         t2_8 = t * t / 8.,
         hp_6 = h * r1 / 6.;
 
-   //localGx[0][0] = v1.x * (-ht_9 / 2. - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6     );
-   //localGx[1][0] = v2.x * (-ht_9      - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   //localGx[2][0] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6     );
-   //localGx[3][0] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   //                        
-   //localGx[0][1] = v1.x * (-ht_9 / 2. - tp_6     ) + v2.y * (t2_8 / 3. + hp_6 / 2.);
-   //localGx[1][1] = v2.x * (-ht_9      - tp_6     ) + v2.y * (t2_8      + hp_6     );
-   //localGx[2][1] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v2.y * (t2_8 / 3. + hp_6 / 2.);
-   //localGx[3][1] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v2.y * (t2_8      + hp_6     );
-   //                        
-   //localGx[0][2] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6);
-   //localGx[1][2] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
-   //localGx[2][2] = v3.x * ( ht_9 / 2. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6);
-   //localGx[3][2] = v4.x * ( ht_9 / 1. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
-   //                        
-   //localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * (t2_8 / 3. + hp_6 / 2.);
-   //localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * (t2_8      + hp_6     );
-   //localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * (t2_8 / 3. + hp_6 / 2.);
-   //localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * (t2_8      + hp_6     ); 
-
    localGx[0][0] = v1.x * (-ht_9 / 2. - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6     );
    localGx[1][0] = v2.x * (-ht_9      - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
    localGx[2][0] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6     );
    localGx[3][0] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   
-   localGx[0][1] = v1.x * ( ht_9 / 2. + tp_6     ) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
-   localGx[1][1] = v2.x * ( ht_9      + tp_6     ) + v2.y * (-t2_8      - hp_6     );
-   localGx[2][1] = v3.x * ( ht_9 / 4. + tp_6 / 2.) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
-   localGx[3][1] = v4.x * ( ht_9 / 2. + tp_6 / 2.) + v2.y * (-t2_8      - hp_6     );
-   
-   localGx[0][2] = v1.x * (-ht_9 / 4. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6     );
-   localGx[1][2] = v2.x * (-ht_9 / 2. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
-   localGx[2][2] = v3.x * (-ht_9 / 2. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6     );
-   localGx[3][2] = v4.x * (-ht_9 / 1. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
-   
-   localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
-   localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * ( t2_8      + hp_6     );
-   localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
-   localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * ( t2_8      + hp_6     );
+                           
+   localGx[0][1] = v1.x * (-ht_9 / 2. - tp_6     ) + v2.y * (t2_8 / 3. + hp_6 / 2.);
+   localGx[1][1] = v2.x * (-ht_9      - tp_6     ) + v2.y * (t2_8      + hp_6     );
+   localGx[2][1] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v2.y * (t2_8 / 3. + hp_6 / 2.);
+   localGx[3][1] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v2.y * (t2_8      + hp_6     );
+                           
+   localGx[0][2] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6);
+   localGx[1][2] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
+   localGx[2][2] = v3.x * ( ht_9 / 2. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6);
+   localGx[3][2] = v4.x * ( ht_9 / 1. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
+                           
+   localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * (t2_8 / 3. + hp_6 / 2.);
+   localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * (t2_8      + hp_6     );
+   localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * (t2_8 / 3. + hp_6 / 2.);
+   localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * (t2_8      + hp_6     ); 
+
+   //localGx[0][0] = v1.x * (-ht_9 / 2. - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6     );
+   //localGx[1][0] = v2.x * (-ht_9      - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
+   //localGx[2][0] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6     );
+   //localGx[3][0] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
+   //
+   //localGx[0][1] = v1.x * ( ht_9 / 2. + tp_6     ) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
+   //localGx[1][1] = v2.x * ( ht_9      + tp_6     ) + v2.y * (-t2_8      - hp_6     );
+   //localGx[2][1] = v3.x * ( ht_9 / 4. + tp_6 / 2.) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
+   //localGx[3][1] = v4.x * ( ht_9 / 2. + tp_6 / 2.) + v2.y * (-t2_8      - hp_6     );
+   //
+   //localGx[0][2] = v1.x * (-ht_9 / 4. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6     );
+   //localGx[1][2] = v2.x * (-ht_9 / 2. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
+   //localGx[2][2] = v3.x * (-ht_9 / 2. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6     );
+   //localGx[3][2] = v4.x * (-ht_9 / 1. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
+   //
+   //localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
+   //localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * ( t2_8      + hp_6     );
+   //localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
+   //localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * ( t2_8      + hp_6     );
 
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
