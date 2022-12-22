@@ -10,9 +10,9 @@ FEM::FEM()
    mesh->MakeMesh();
    num_of_knots = mesh->knots.size();
    num_of_FE = mesh->elems.size();
-
+#ifndef DENSE
    A = MakeSparseFormat(4, mesh->knots.size(), mesh);
-   // A => G, M, Gx
+    //A => G, M, Gx
    {
       G = new Matrix();
       Gx = new Matrix();
@@ -39,7 +39,16 @@ FEM::FEM()
       M->u.resize(A->u.size());
       G->u.resize(A->u.size());
       Gx->u.resize(A->u.size());
+      M->isDense = G->isDense = Gx->isDense = false;
    }
+#else
+   A = MakeDenseFormat(mesh->knots.size());
+   G = MakeDenseFormat(mesh->knots.size());
+   Gx = MakeDenseFormat(mesh->knots.size());
+   M = MakeDenseFormat(mesh->knots.size());
+
+#endif // DEBUG
+
 
    q1.resize(num_of_knots, 0.);
    q2.resize(num_of_knots, 0.);
@@ -90,7 +99,13 @@ void FEM::SolveParabolic()
          }
          AssembleMatricies(true, t);
          //SolveSLAE_LOSnKholessky(A, q1, d);
+         //SolveSLAE_Relax(A, q1, d, 1.6);
+#ifdef DENSE
+         SolveSLAE_LU(A, q1, d);
+         //SolveSLAE_LOS(A, q1, d);
+#else
          SolveSLAE_LOS(A, q1, d);
+#endif // DENSE
 
          //WriteMatrix(A);
          //copy(q1, q2);
@@ -152,14 +167,22 @@ void FEM::AddFirstBounds(real time)
    {
       for (int i = 0; i < 2; i++)
       {
-         A->di[cond.knots_num[i]] = 1.;
-         for (int j = A->ig[cond.knots_num[i]]; j < A->ig[cond.knots_num[i] + 1]; j++)
-            A->l[j] = 0.;
-         for (int ii = 0; ii < A->dim; ii++)                // идем по столбцам
-            for (int j = A->ig[ii]; j < A->ig[ii + 1]; j++)   // идем элементам в столбце
-               if (A->jg[j] == cond.knots_num[i])          // в нужной строке элемент?
-                  A->u[j] = 0.;
-
+         if (A->isDense)
+         {
+            for (size_t ii = 0; ii < A->dim; ii++)
+               A->dense[i][ii] = 0.;
+            A->dense[i][i] = 1.;
+         }
+         else
+         {
+            A->di[cond.knots_num[i]] = 1.;
+            for (int j = A->ig[cond.knots_num[i]]; j < A->ig[cond.knots_num[i] + 1]; j++)
+               A->l[j] = 0.;
+            for (int ii = 0; ii < A->dim; ii++)                // идем по столбцам
+               for (int j = A->ig[ii]; j < A->ig[ii + 1]; j++)   // идем элементам в столбце
+                  if (A->jg[j] == cond.knots_num[i])          // в нужной строке элемент?
+                     A->u[j] = 0.;
+         }
 #ifdef DEBUG2
          if (time > 1e-10)
             d[cond.knots_num[i]] = bound1func(mesh->knots[cond.knots_num[i]], time, cond.n_test);
@@ -314,14 +337,23 @@ void FEM::AssembleMatricies(bool isTimed, real time)
 {
    real mulM = isTimed ? 1. / dt : 1.;
    real mulGx = isTimed ? 1.0 : 0.0;
-   for (int i = 0; i < A->l.size(); i++)
-   {
-      A->l[i] = mulM * M->l[i] + G->l[i] + mulGx * Gx->l[i];
-      A->u[i] = mulM * M->u[i] + G->u[i] + mulGx * Gx->u[i];
-   }
-   for (int i = 0; i < A->dim; i++)
-      A->di[i] = mulM * M->di[i] + G->di[i] + mulGx * Gx->di[i];
 
+   if (!A->isDense)
+   {
+      for (int i = 0; i < A->l.size(); i++)
+      {
+         A->l[i] = mulM * M->l[i] + G->l[i] + mulGx * Gx->l[i];
+         A->u[i] = mulM * M->u[i] + G->u[i] + mulGx * Gx->u[i];
+      }
+      for (int i = 0; i < A->dim; i++)
+         A->di[i] = mulM * M->di[i] + G->di[i] + mulGx * Gx->di[i];
+   }
+   else
+   {
+      for (size_t i = 0; i < A->dim; i++)
+         for (size_t j = 0; j < A->dim; j++)
+            A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gx->dense[i][j];
+   }
 
    if (isTimed)
    {

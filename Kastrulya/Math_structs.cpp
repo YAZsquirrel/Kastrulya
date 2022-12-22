@@ -2,15 +2,20 @@
 #include <set>
 #include <array>
 #include <cmath>
+#include <ppl.h>
+#include <time.h>
+
+using namespace concurrency;
+
 
 namespace maths
 {
-   Matrix* MakeSparseFormat(int localsize, int elemsize, Mesh* mesh)
+   Matrix* MakeSparseFormat(int localsize, int size, Mesh* mesh)
    {
       const int N = localsize;
       // set connection table
       std::vector<std::set<int>> map;
-      map.resize(elemsize);
+      map.resize(size);
       for (auto& Elem : mesh->elems)
          for (int i = 0; i < N; i++)
             for (int j = 0; j < N; j++)
@@ -18,12 +23,12 @@ namespace maths
                   map[Elem.knots_num[i]].insert(Elem.knots_num[j]);
 
       Matrix* M = new Matrix;
-      M->dim = elemsize;
-      M->ig.resize(elemsize + 1, 0);
+      M->dim = size;
+      M->ig.resize(size + 1, 0);
 
-      for (int i = 0; i < elemsize; i++)
+      for (int i = 0; i < size; i++)
          M->ig[i + 1] = M->ig[i] + map[i].size();
-      M->jg.resize(M->ig[elemsize], 0);
+      M->jg.resize(M->ig[size], 0);
       for (int i = 0; i < map.size(); i++)
       {
          std::vector<int> jind;
@@ -33,47 +38,77 @@ namespace maths
             M->jg[M->ig[i] + j] = jind[j];
       }
 
-      M->l.resize(M->ig[elemsize], 0.);
-      M->u.resize(M->ig[elemsize], 0.);
-      M->di.resize(elemsize, 0.);
+      M->l.resize(M->ig[size], 0.);
+      M->u.resize(M->ig[size], 0.);
+      M->di.resize(size, 0.);
+      M->isDense = false;
       return M;
 
    }
 
+   Matrix* MakeDenseFormat(int size)
+   {
+      Matrix* A = new Matrix();
+      A->dim = size;
+      A->dense.resize(size);
+      for (size_t i = 0; i < A->dim; i++)
+         A->dense[i].resize(A->dim, 0.);
+      return A;
+   }
+
    void AddElement(Matrix* M, int i, int j, real elem)
    {
-      bool found = false;
-      if (i == j)
-         M->di[i] += elem;
-      else if (i < j)
+      if (!M->isDense)
       {
-         int m;
-         for (m = M->ig[j]; m < M->ig[j + 1]; m++)
-            if (M->jg[m] == i) { found = true; break; }
-         if (found)
-            M->u[m] += elem; // i-1?
+         bool found = false;
+         if (i == j)
+            M->di[i] += elem;
+         else if (i < j)
+         {
+            int m;
+            for (m = M->ig[j]; m < M->ig[j + 1]; m++)
+               if (M->jg[m] == i) { found = true; break; }
+            if (found)
+               M->u[m] += elem; // i-1?
+         }
+         else
+         {
+            int n;
+            for (n = M->ig[i]; n < M->ig[i + 1]; n++)
+               if (M->jg[n] == j) { found = true; break; }
+            if (found)
+               M->l[n] += elem; // i-1??
+         }
       }
       else
-      {
-         int n;
-         for (n = M->ig[i]; n < M->ig[i + 1]; n++)
-            if (M->jg[n] == j) { found = true; break; }
-         if (found)
-            M->l[n] += elem; // i-1??
-      }
+         M->dense[i][j] += elem;
    }
 
    void MatxVec(std::vector<real>& v, Matrix* M, std::vector<real>& b) // v = M*b
    {
-      for (int i = 0; i < M->dim; i++)
-         v[i] = M->di[i] * b[i];
+      if (!M->isDense)
+      {
+         for (int i = 0; i < M->dim; i++)
+            v[i] = M->di[i] * b[i];
 
-      for (int i = 0; i < M->dim; i++)
-         for (int j = M->ig[i]; j < M->ig[i + 1]; j++) // -1?
+         for (int i = 0; i < M->dim; i++)
+            for (int j = M->ig[i]; j < M->ig[i + 1]; j++) // -1?
+            {
+               v[i] += M->l[j] * b[M->jg[j]];
+               v[M->jg[j]] += M->u[j] * b[i];
+            }
+      }
+      else
+      {
+         for (size_t i = 0; i < M->dim; i++)
          {
-            v[i] += M->l[j] * b[M->jg[j]];
-            v[M->jg[j]] += M->u[j] * b[i];
+            real sum = 0;
+            #pragma omp parallel for reduction(+:sum)
+            for (int j = 0; j < M->dim; j++)
+               sum += M->dense[i][j] * b[j];
+            v[i] = sum;
          }
+      }
    }
 
    void copy(std::vector<real>& to, std::vector<real>& from)
@@ -108,7 +143,6 @@ namespace maths
       int i, k;
       //x = q;
 
-      SolveSLAE_Relax(M, x, b, 1.6);
       real lastres;
       MatxVec(Ar, M, x);
       for (i = 0; i < M->dim; i++)
@@ -117,10 +151,12 @@ namespace maths
       real b_norm = sqrt(scalar(b, b));
       res = sqrt(scalar(r, r)) / b_norm;
 
-      for (k = 1; k < 1000000 && res > eps; k++)
+      for (k = 1; k < 100000 && res > eps; k++)
       {
          skp = scalar(p, p);
          alpha = scalar(p, r) / skp;
+
+#pragma omp parallel for
          for (i = 0; i < M->dim; i++)
          {
             x[i] += alpha * z[i];
@@ -128,15 +164,66 @@ namespace maths
          }
          MatxVec(Ar, M, r);
          beta = -scalar(p, Ar) / skp;
+#pragma omp parallel for
          for (i = 0; i < M->dim; i++)
          {
             z[i] = r[i] + beta * z[i];
             p[i] = Ar[i] + beta * p[i];
          }
          res = sqrt(scalar(r, r)) / b_norm;
-         //SolveSLAErelax(M, x, b, 1.6);
       }
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
+   }
+
+   void SolveSLAE_LU(Matrix* A, std::vector<real>& q, std::vector<real>& b)
+   {
+      std::vector<real> y, &x = q;
+      y.resize(A->dim, 0);
+      std::clock_t start = clock();
+
+      Matrix *LU = MakeDenseFormat(A->dim);
+      // L 
+
+#pragma omp parallel for    
+      for (int i = 0; i < LU->dim; i++)
+      {
+#pragma omp parallel for
+         for (int j = 0; j < LU->dim; j++)
+         {
+            if (i <= j) // U
+            {
+               real sum = 0.;
+
+#pragma omp parallel for reduction (+:sum)
+               for (int k = 0; k < i; k++)
+                  sum += LU->dense[i][k] * LU->dense[k][j];
+
+               LU->dense[i][j] = A->dense[i][j] - sum;
+            }
+            else // L
+            {
+               real sum = 0.;
+#pragma omp parallel for reduction (+:sum)
+               for (int k = 0; k < j; k++)
+                  sum += LU->dense[i][k] * LU->dense[k][j];
+               LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+            }
+         }
+      }
+      SolveForL(y, b, LU);
+      SolveForU(x, y, LU);
+
+      std::clock_t end = clock();
+
+      real res = 0;
+      y.resize(A->dim, 0);
+      MatxVec(y, A, x);
+      for (size_t i = 0; i < A->dim; i++)
+         y[i] -= b[i];
+      res = sqrt(scalar(y, y) / scalar(b, b));
+      std::cout << res << '\n';
+      std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
+
    }
 
    void SolveSLAE_LOSnKholessky(Matrix* A, std::vector<real>& q, std::vector<real>& b)
@@ -160,11 +247,11 @@ namespace maths
       for (int i = 0; i < A->dim; i++)         
          t2[i] = b[i] - t1[i];
 
-      SolveL(r, t2, SQ);
-      SolveLT(z, r, SQ);
+      SolveForL(r, t2, SQ);
+      SolveForU(z, r, SQ);
 
       MatxVec(t1, A, z);                            
-      SolveL(p, t1, SQ);
+      SolveForL(p, t1, SQ);
 
       b_norm = sqrt(scalar(b, b));
       res = sqrt(scalar(r, r)) / b_norm;
@@ -182,13 +269,13 @@ namespace maths
 
          //MatxVec(Ar, M, r);                        
          //SolveLLT(t1, Ar, SQ);                   //// S1*A*Q1*rk = t1 =>        
-         SolveL(t1, r, SQ);                        // t2 = Q1*rk -> Q*t2 = rk
+         SolveForL(t1, r, SQ);                        // t2 = Q1*rk -> Q*t2 = rk
          MatxVec(At1, A, t1);                       // A*t2 = At
-         SolveLT(t2, At1, SQ);                      // t1 = S1*At -> S*t1 = At
+         SolveForU(t2, At1, SQ);                      // t1 = S1*At -> S*t1 = At
 
          beta = -scalar(t2, p) / skp;              // beta = (pk0, t) / (pk0, pk0)          
 
-         SolveLT(t2, r, SQ);                        // Q*zk1 = rk1
+         SolveForU(t2, r, SQ);                        // Q*zk1 = rk1
          for (int i = 0; i < A->dim; i++)
          {
             z[i] = t1[i] + beta * z[i];                   // zk1 += beta
@@ -203,7 +290,6 @@ namespace maths
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
       delete SQ;
    }
-
 
    void SolveSLAE_Relax(Matrix* M, std::vector<real>& q, std::vector<real>& b, real w)
    {
@@ -280,20 +366,32 @@ namespace maths
 
    void MatSymmetrisation(Matrix* M, std::vector<real>& b, int i)
    {
-      for (int j = M->ig[i]; j < M->ig[i + 1]; j++)
+      if (!M->isDense)
       {
-         b[M->jg[j]] -= b[i] * M->u[j];
-         M->u[j] = 0;
-      }
+         for (int j = M->ig[i]; j < M->ig[i + 1]; j++)
+         {
+            b[M->jg[j]] -= b[i] * M->u[j];
+            M->u[j] = 0;
+         }
 
-      for (int n = 0; n < M->dim; n++)
+         for (int n = 0; n < M->dim; n++)
+         {
+            for (int j = M->ig[n]; j < M->ig[n + 1]; j++)
+               if (M->jg[j] == i)
+               {
+                  b[n] -= b[i] * M->l[j];
+                  M->l[j] = 0.0;
+               }
+         }
+      }
+      else 
       {
-         for (int j = M->ig[n]; j < M->ig[n + 1]; j++)
-            if (M->jg[j] == i)
-            {
-               b[n] -= b[i] * M->l[j];
-               M->l[j] = 0.0;
-            }
+         for (int j = 0; j < M->dim; j++)
+         {
+            b[j] -= b[i] * M->dense[i][j];
+            M->dense[i][j] = 0;
+         }
+         M->dense[i][i] = 1.;
       }
    }
 
@@ -307,6 +405,7 @@ namespace maths
       M->l.resize(A->l.size());
       M->u.resize(A->u.size());
       M->di.resize(A->di.size());
+      M->isDense = false;
 
       copy(M->di, A->di);
       copy(M->ig, A->ig);
@@ -339,33 +438,68 @@ namespace maths
       }
       return M;
    }
-   void SolveLLT(std::vector<real>& q, std::vector<real>& b, Matrix* M)
+
+   void SolveForL(std::vector<real>& q, std::vector<real>& b, Matrix* M) // y = 1/L * b
    {
-      SolveL(b, q, M);
-      SolveLT(q, q, M);
-   }
-   void SolveL(std::vector<real>& q, std::vector<real>& b, Matrix* M)
-   {
-      for (int k = 1, k1 = 0; k <= M->dim; k++, k1++)
+      if (!M->isDense)
       {
-         double sum = 0;
+         for (int k = 1, k1 = 0; k < M->dim; k++, k1++)
+         {
+            double sum = 0;
+            for (int i = M->ig[k1]; i < M->ig[k]; i++)
+               sum += M->l[i] * q[M->jg[i]];
+   
+            q[k1] = b[k1] - sum;
+         }
+      }
+      else
+      {
+#pragma omp parallel for  
+         for (int i = 0; i < M->dim; i++)
+         {  
+            real sum = 0;
+#pragma omp parallel for reduction (+:sum)
+            for (int j = 0; j < i; j++)
+               sum += q[j] * M->dense[i][j];
 
-         for (int i = M->ig[k1]; i < M->ig[k]; i++)
-            sum += M->l[i] * q[M->jg[i]];
-
-         q[k1] = (b[k1] - sum) / M->di[k1];
+            q[i] = b[i] - sum;
+         }
       }
    }
-   void SolveLT(std::vector<real>& q, std::vector<real>& b, Matrix* M)
+   void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M) // x = 1/U * y
    {
-      for (int k = M->dim, k1 = M->dim - 1; k > 0; k--, k1--)
+      if (!M->isDense)
       {
+         for (int k = M->dim - 1; k > 0; k--)
+         {
+            /// ??????????????????????????????????????
+            //real sum = b[k1];
+            ////q[k1] = b[k1] / M->di[k1];
+            ////double v_el = q[k1];
+            //
+            //for (int i = M->ig[k1]; i < M->ig[k]; i++)
+            //   b[M->jg[i]] -= M->l[i] * v_el;
 
-         q[k1] = b[k1] / M->di[k1];
-         double v_el = q[k1];
+            real sum = b[k];
 
-         for (int i = M->ig[k1]; i < M->ig[k]; i++)
-            b[M->jg[i]] -= M->l[i] * v_el;
+            for (int j = M->ig[k]; j < M->ig[k + 1]; j++) // -1?
+               sum -= M->l[j] * q[M->jg[j]];
+            
+            q[k] = sum / M->di[k];
+         } 
+      }
+      else
+      {
+#pragma omp parallel for
+         for (int i = M->dim - 1; i >= 0; i--)
+         {
+            real sum = b[i];
+#pragma omp parallel for reduction(-:sum)
+            for (int j = i + 1; j < M->dim; j++)
+               sum -= q[j] * M->dense[i][j];
+
+            q[i] = sum / M->dense[i][i];
+         }
       }
    }
 }

@@ -2,6 +2,7 @@
 
 //#define DEBUG2
 //#define DEBUG
+#define DENSE
 
 #include "Math_structs.h"
 #include <functional>
@@ -12,8 +13,6 @@ using namespace maths;
 class FEM
 {
 private:
-   //real f(knot& knot_) {return 0;}
-   //real ug(knot& knot_) {return ;}
    int num_of_knots, num_of_FE, utest;
 
    real localM[4][4]{};
