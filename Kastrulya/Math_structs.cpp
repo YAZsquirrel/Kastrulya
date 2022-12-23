@@ -2,6 +2,9 @@
 #include <set>
 #include <array>
 #include <cmath>
+#include <atomic>
+#include <numeric>
+#include <array>
 #include <ppl.h>
 #include <time.h>
 
@@ -193,18 +196,26 @@ namespace maths
             if (i <= j) // U
             {
                real sum = 0.;
-#pragma omp parallel for reduction (+:sum)
+               #pragma omp parallel for reduction (+:sum)
                for (int k = 0; k < i; k++)
                   sum += LU->dense[i][k] * LU->dense[k][j];
                LU->dense[i][j] = A->dense[i][j] - sum;
+
+               //combinable<real> sumc;
+               //parallel_for(0, i, [&](size_t k){ sumc.local() += LU->dense[i][k] * LU->dense[k][j]; });
+               //LU->dense[i][j] = A->dense[i][j] - sumc.combine(std::plus<real>());
             }
             else // L
             {
                real sum = 0.;
-#pragma omp parallel for reduction (+:sum)
+               #pragma omp parallel for reduction (+:sum)
                for (int k = 0; k < j; k++)
                   sum += LU->dense[i][k] * LU->dense[k][j];
                LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+
+               //combinable<real> sumc;
+               //parallel_for(0, j, [&](size_t k) { sumc.local() += LU->dense[i][k] * LU->dense[k][j]; });
+               //LU->dense[i][j] = A->dense[i][j] - sumc.combine(std::plus<real>());
             }
          }
       }
@@ -213,13 +224,13 @@ namespace maths
 
       std::clock_t end = clock();
 
-      real res = 0;
-      y.resize(A->dim, 0);
-      MatxVec(y, A, x);
-      for (size_t i = 0; i < A->dim; i++)
-         y[i] -= b[i];
-      res = sqrt(scalar(y, y) / scalar(b, b));
-      std::cout << res << '\n';
+      //real res = 0;
+      //y.resize(A->dim, 0);
+      //MatxVec(y, A, x);
+      //for (size_t i = 0; i < A->dim; i++)
+      //   y[i] -= b[i];
+      //res = sqrt(scalar(y, y) / scalar(b, b));
+      //std::cout << res << '\n';
       std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
 
    }
@@ -452,15 +463,19 @@ namespace maths
       }
       else
       {
-//#pragma omp parallel for  
+         //#pragma omp parallel for  
          for (int i = 0; i < M->dim; i++)
          {  
             real sum = 0;
-#pragma omp parallel for reduction (+:sum)
+            #pragma omp parallel for reduction (+:sum)
             for (int j = 0; j < i; j++)
                sum += q[j] * M->dense[i][j];
-
             q[i] = b[i] - sum;
+
+            //combinable<real> sumc;
+            //parallel_for(0, i, [&](size_t j) { sumc.local() += q[j] * M->dense[i][j]; });
+            //q[i] = b[i] - sumc.combine(std::plus<real>());
+
          }
       }
    }
@@ -488,15 +503,18 @@ namespace maths
       }
       else
       {
-//#pragma omp parallel for reduction(-:sum)
+         //#pragma omp parallel for reduction(-:sum)
          for (int i = M->dim - 1; i >= 0; i--)
          {
             real sum = b[i];
-#pragma omp parallel for reduction(-:sum)
+            #pragma omp parallel for reduction(-:sum)
             for (int j = i + 1; j < M->dim; j++)
                sum -= q[j] * M->dense[i][j];
-
             q[i] = sum / M->dense[i][i];
+
+            //combinable<real> sumc;
+            //parallel_for(0, i, [&](size_t j) { sumc.local() += q[j] * M->dense[i][j]; });
+            //q[i] = (b[i] - sumc.combine(std::plus<real>())) / M->dense[i][i];
          }
       }
    }
