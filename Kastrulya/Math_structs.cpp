@@ -188,37 +188,47 @@ namespace maths
       // L 
 
 //#pragma omp parallel for
-      for (int i = 0; i < LU->dim; i++)
-      {
-//#pragma omp parallel for
-         for (int j = 0; j < LU->dim; j++)
-         {
-            if (i <= j) // U
-            {
-               real sum = 0.;
-               #pragma omp parallel for reduction (+:sum)
-               for (int k = 0; k < i; k++)
-                  sum += LU->dense[i][k] * LU->dense[k][j];
-               LU->dense[i][j] = A->dense[i][j] - sum;
+      //for (int i = 0; i < LU->dim; i++)
+      parallel_for((size_t)0, LU->dim, [&](size_t i)
+          {
+              //#pragma omp parallel for
+              for (int j = 0; j < LU->dim; j++)
+              {
+                  if (i <= j) // U
+                  {
+                      real sum = 0.;
+                      //#pragma omp parallel for reduction (+:sum)
+                      //for (int k = 0; k < i; k++)
+                      //    sum += LU->dense[i][k] * LU->dense[k][j];
+                      //LU->dense[i][j] = A->dense[i][j] - sum;
 
-               //combinable<real> sumc;
-               //parallel_for(0, i, [&](size_t k){ sumc.local() += LU->dense[i][k] * LU->dense[k][j]; });
-               //LU->dense[i][j] = A->dense[i][j] - sumc.combine(std::plus<real>());
-            }
-            else // L
-            {
-               real sum = 0.;
-               #pragma omp parallel for reduction (+:sum)
-               for (int k = 0; k < j; k++)
-                  sum += LU->dense[i][k] * LU->dense[k][j];
-               LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+                      for (int k = 0; k < i; k++) {
+                          critical_section cs;
+                          cs.lock();
+                          sum += LU->dense[i][k] * LU->dense[k][j]; 
+                          cs.unlock();
+                          }
+                      LU->dense[i][j] = A->dense[i][j] - sum;
+                  }
+                  else // L
+                  {
+                      real sum = 0.;
+                      //#pragma omp parallel for reduction (+:sum)
+                      //for (int k = 0; k < j; k++)
+                      //    sum += LU->dense[i][k] * LU->dense[k][j];
+                      //LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
 
-               //combinable<real> sumc;
-               //parallel_for(0, j, [&](size_t k) { sumc.local() += LU->dense[i][k] * LU->dense[k][j]; });
-               //LU->dense[i][j] = A->dense[i][j] - sumc.combine(std::plus<real>());
-            }
-         }
-      }
+                      for (int k = 0; k < j; k++) {
+                          critical_section cs;
+                          cs.lock();
+                          sum += LU->dense[i][k] * LU->dense[k][j];
+                          cs.unlock();
+                          }
+                      LU->dense[i][j] = A->dense[i][j] - sum;
+                  }
+              }
+          });
+
       SolveForL(y, b, LU);
       SolveForU(x, y, LU);
 
@@ -464,19 +474,25 @@ namespace maths
       else
       {
          //#pragma omp parallel for  
-         for (int i = 0; i < M->dim; i++)
-         {  
-            real sum = 0;
-            #pragma omp parallel for reduction (+:sum)
-            for (int j = 0; j < i; j++)
-               sum += q[j] * M->dense[i][j];
-            q[i] = b[i] - sum;
+         //for (int i = 0; i < M->dim; i++)
+          parallel_for((size_t)0, M->dim, [&](size_t i)
+              {
+                  real sum = 0;
+                  //#pragma omp parallel for reduction (+:sum)
+                  //for (int j = 0; j < i; j++)
+                  //    sum += q[j] * M->dense[i][j];
+                  //q[i] = b[i] - sum;
 
-            //combinable<real> sumc;
-            //parallel_for(0, i, [&](size_t j) { sumc.local() += q[j] * M->dense[i][j]; });
-            //q[i] = b[i] - sumc.combine(std::plus<real>());
+                  for (int j = 0; j < i; j++)
+                      { 
+                          critical_section cs;
+                          cs.lock();
+                          sum += q[j] * M->dense[i][j];
+                          cs.unlock();
+                      }
+                  q[i] = b[i] - sum;
 
-         }
+              });
       }
    }
    void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M) // x = 1/U * y
@@ -504,18 +520,23 @@ namespace maths
       else
       {
          //#pragma omp parallel for reduction(-:sum)
-         for (int i = M->dim - 1; i >= 0; i--)
-         {
-            real sum = b[i];
-            #pragma omp parallel for reduction(-:sum)
-            for (int j = i + 1; j < M->dim; j++)
-               sum -= q[j] * M->dense[i][j];
-            q[i] = sum / M->dense[i][i];
+         //for (int i = M->dim - 1; i >= 0; i--)
+          parallel_for((size_t)(M->dim - 1), (size_t)-1, (size_t)-1, [&](size_t i)
+              {
+                  real sum = b[i];
+                  //#pragma omp parallel for reduction(-:sum)
+                  //for (int j = i + 1; j < M->dim; j++)
+                  //    sum -= q[j] * M->dense[i][j];
+                  //q[i] = sum / M->dense[i][i];
 
-            //combinable<real> sumc;
-            //parallel_for(0, i, [&](size_t j) { sumc.local() += q[j] * M->dense[i][j]; });
-            //q[i] = (b[i] - sumc.combine(std::plus<real>())) / M->dense[i][i];
-         }
+                  for (int j = i + 1; j < M->dim; j++) {
+                      critical_section cs;
+                      cs.lock();
+                      sum += q[j] * M->dense[i][j];
+                      cs.unlock();
+                      }
+                  q[i] = (b[i] - sum) / M->dense[i][i];
+              });
       }
    }
 }
