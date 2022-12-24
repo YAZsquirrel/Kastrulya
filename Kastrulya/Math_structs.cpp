@@ -196,33 +196,30 @@ namespace maths
               {
                   if (i <= j) // U
                   {
-                      real sum = 0.;
+                      //real sum = 0.;
+                      std::atomic<real> sum;
+                      sum = 0;
                       //#pragma omp parallel for reduction (+:sum)
                       //for (int k = 0; k < i; k++)
                       //    sum += LU->dense[i][k] * LU->dense[k][j];
                       //LU->dense[i][j] = A->dense[i][j] - sum;
 
                       for (int k = 0; k < i; k++) {
-                          critical_section cs;
-                          cs.lock();
-                          sum += LU->dense[i][k] * LU->dense[k][j]; 
-                          cs.unlock();
+                          sum = sum + LU->dense[i][k] * LU->dense[k][j]; 
                           }
                       LU->dense[i][j] = A->dense[i][j] - sum;
                   }
                   else // L
                   {
-                      real sum = 0.;
+                      //real sum = 0.;
                       //#pragma omp parallel for reduction (+:sum)
                       //for (int k = 0; k < j; k++)
                       //    sum += LU->dense[i][k] * LU->dense[k][j];
                       //LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
-
+                      std::atomic<real> sum;
+                      sum = 0;
                       for (int k = 0; k < j; k++) {
-                          critical_section cs;
-                          cs.lock();
-                          sum += LU->dense[i][k] * LU->dense[k][j];
-                          cs.unlock();
+                          sum = sum + LU->dense[i][k] * LU->dense[k][j];
                           }
                       LU->dense[i][j] = A->dense[i][j] - sum;
                   }
@@ -234,13 +231,13 @@ namespace maths
 
       std::clock_t end = clock();
 
-      //real res = 0;
-      //y.resize(A->dim, 0);
-      //MatxVec(y, A, x);
-      //for (size_t i = 0; i < A->dim; i++)
-      //   y[i] -= b[i];
-      //res = sqrt(scalar(y, y) / scalar(b, b));
-      //std::cout << res << '\n';
+      real res = 0;
+      y.resize(A->dim, 0);
+      MatxVec(y, A, x);
+      for (size_t i = 0; i < A->dim; i++)
+         y[i] -= b[i];
+      res = sqrt(scalar(y, y) / scalar(b, b));
+      std::cout << res << '\n';
       std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
 
    }
@@ -477,17 +474,17 @@ namespace maths
          //for (int i = 0; i < M->dim; i++)
           parallel_for((size_t)0, M->dim, [&](size_t i)
               {
-                  real sum = 0;
+                  //real sum = 0;
                   //#pragma omp parallel for reduction (+:sum)
                   //for (int j = 0; j < i; j++)
                   //    sum += q[j] * M->dense[i][j];
                   //q[i] = b[i] - sum;
-
+                  std::atomic<real> sum = 0;
                   for (int j = 0; j < i; j++)
                       { 
                           critical_section cs;
                           cs.lock();
-                          sum += q[j] * M->dense[i][j];
+                          sum = sum + q[j] * M->dense[i][j];
                           cs.unlock();
                       }
                   q[i] = b[i] - sum;
@@ -523,16 +520,16 @@ namespace maths
          //for (int i = M->dim - 1; i >= 0; i--)
           parallel_for((size_t)(M->dim - 1), (size_t)-1, (size_t)-1, [&](size_t i)
               {
-                  real sum = b[i];
+                  //real sum = b[i];
                   //#pragma omp parallel for reduction(-:sum)
                   //for (int j = i + 1; j < M->dim; j++)
                   //    sum -= q[j] * M->dense[i][j];
                   //q[i] = sum / M->dense[i][i];
-
+                  std::atomic<real> sum = b[i];
                   for (int j = i + 1; j < M->dim; j++) {
                       critical_section cs;
                       cs.lock();
-                      sum += q[j] * M->dense[i][j];
+                      sum = sum + q[j] * M->dense[i][j];
                       cs.unlock();
                       }
                   q[i] = (b[i] - sum) / M->dense[i][i];
