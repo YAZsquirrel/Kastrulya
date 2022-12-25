@@ -187,44 +187,49 @@ namespace maths
       Matrix *LU = MakeDenseFormat(A->dim);
       // L 
 
-//#pragma omp parallel for
-      //for (int i = 0; i < LU->dim; i++)
-      parallel_for((size_t)0, LU->dim, [&](size_t i)
+      for (int i = 0; i < LU->dim; i++)
+      {
+          for (int j = 0; j < LU->dim; j++)
           {
-              //#pragma omp parallel for
-              for (int j = 0; j < LU->dim; j++)
+              if (i <= j) // U
               {
-                  if (i <= j) // U
-                  {
-                      //real sum = 0.;
-                      std::atomic<real> sum;
-                      sum = 0;
-                      //#pragma omp parallel for reduction (+:sum)
-                      //for (int k = 0; k < i; k++)
-                      //    sum += LU->dense[i][k] * LU->dense[k][j];
-                      //LU->dense[i][j] = A->dense[i][j] - sum;
+                  //real sum = 0.;
+                  //combinable<double> sumc;
 
-                      for (int k = 0; k < i; k++) {
-                          sum = sum + LU->dense[i][k] * LU->dense[k][j]; 
-                          }
-                      LU->dense[i][j] = A->dense[i][j] - sum;
-                  }
-                  else // L
+                  combinable<real> sum;
+                  
+                  //#pragma omp parallel for reduction (+:sum)
+                  //for (int k = 0; k < i; k++)
+                  //    sum += LU->dense[i][k] * LU->dense[k][j];
+                  //LU->dense[i][j] = A->dense[i][j] - sum;
+
+                  parallel_for((size_t)0, (size_t)i, [&](size_t k)
+                  //for (int k = 0; k < i; k++) 
                   {
-                      //real sum = 0.;
-                      //#pragma omp parallel for reduction (+:sum)
-                      //for (int k = 0; k < j; k++)
-                      //    sum += LU->dense[i][k] * LU->dense[k][j];
-                      //LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
-                      std::atomic<real> sum;
-                      sum = 0;
-                      for (int k = 0; k < j; k++) {
-                          sum = sum + LU->dense[i][k] * LU->dense[k][j];
-                          }
-                      LU->dense[i][j] = A->dense[i][j] - sum;
-                  }
+                       sum.local() += LU->dense[i][k] * LU->dense[k][j];
+                  });
+                  LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
               }
-          });
+              else // L
+              {
+                  //real sum = 0.;
+                  //#pragma omp parallel for reduction (+:sum)
+                  //for (int k = 0; k < j; k++)
+                  //    sum += LU->dense[i][k] * LU->dense[k][j];
+                  //LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+
+                  combinable<real> sum;
+                  //sum = 0;
+                  //for (int k = 0; k < j; k++)
+
+                  parallel_for((size_t)0, (size_t)j, [&](size_t k)
+                  {
+                      sum.local() += LU->dense[i][k] * LU->dense[k][j];
+                  });
+                  LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
+              }
+          }
+      }
 
       SolveForL(y, b, LU);
       SolveForU(x, y, LU);
@@ -470,26 +475,26 @@ namespace maths
       }
       else
       {
-         //#pragma omp parallel for  
-         //for (int i = 0; i < M->dim; i++)
-          parallel_for((size_t)0, M->dim, [&](size_t i)
-              {
-                  //real sum = 0;
-                  //#pragma omp parallel for reduction (+:sum)
-                  //for (int j = 0; j < i; j++)
-                  //    sum += q[j] * M->dense[i][j];
-                  //q[i] = b[i] - sum;
-                  std::atomic<real> sum = 0;
-                  for (int j = 0; j < i; j++)
-                      { 
-                          critical_section cs;
-                          cs.lock();
-                          sum = sum + q[j] * M->dense[i][j];
-                          cs.unlock();
-                      }
-                  q[i] = b[i] - sum;
+         for (int i = 0; i < M->dim; i++)
+         {
+             //real sum = 0;
+             //#pragma omp parallel for reduction (+:sum)
+             //for (int j = 0; j < i; j++)
+             //    sum += q[j] * M->dense[i][j];
+             //q[i] = b[i] - sum;
+             // 
+             //std::atomic<real> sum = 0;
 
-              });
+             combinable<real> sum;
+             parallel_for((size_t)0, (size_t)i, [&](size_t j)
+             //for (int j = 0; j < i; j++)
+             { 
+                 sum.local() += q[j] * M->dense[i][j];
+             });
+
+             q[i] = b[i] - sum.combine(std::plus<real>());
+
+         }
       }
    }
    void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M) // x = 1/U * y
@@ -516,24 +521,22 @@ namespace maths
       }
       else
       {
-         //#pragma omp parallel for reduction(-:sum)
-         //for (int i = M->dim - 1; i >= 0; i--)
-          parallel_for((size_t)(M->dim - 1), (size_t)-1, (size_t)-1, [&](size_t i)
+          for (int i = M->dim - 1; i >= 0; i--)
+          {
+              //real sum = b[i];
+              //#pragma omp parallel for reduction(-:sum)
+              //for (int j = i + 1; j < M->dim; j++)
+              //    sum -= q[j] * M->dense[i][j];
+              //q[i] = sum / M->dense[i][i];
+
+              combinable<real> sum;
+              //for (int j = i + 1; j < M->dim; j++) 
+              parallel_for((size_t)(i + 1), M->dim, [&](size_t j)
               {
-                  //real sum = b[i];
-                  //#pragma omp parallel for reduction(-:sum)
-                  //for (int j = i + 1; j < M->dim; j++)
-                  //    sum -= q[j] * M->dense[i][j];
-                  //q[i] = sum / M->dense[i][i];
-                  std::atomic<real> sum = b[i];
-                  for (int j = i + 1; j < M->dim; j++) {
-                      critical_section cs;
-                      cs.lock();
-                      sum = sum + q[j] * M->dense[i][j];
-                      cs.unlock();
-                      }
-                  q[i] = (b[i] - sum) / M->dense[i][i];
+                  sum.local() += q[j] * M->dense[i][j];
               });
+              q[i] = (b[i] - sum.combine(std::plus<real>())) / M->dense[i][i];
+          }
       }
    }
 }
