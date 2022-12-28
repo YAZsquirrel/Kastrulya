@@ -11,7 +11,7 @@ FEM::FEM()
    num_of_knots = mesh->knots.size();
    num_of_FE = mesh->elems.size();
 #ifndef DENSE
-   A = MakeSparseFormat(4, mesh->knots.size(), mesh);
+   A = MakeSparseRowColumnFormat(4, mesh->knots.size(), mesh);
     //A => G, M, Gx
    {
       G = new Matrix();
@@ -39,7 +39,7 @@ FEM::FEM()
       M->u.resize(A->u.size());
       G->u.resize(A->u.size());
       Gx->u.resize(A->u.size());
-      M->isDense = G->isDense = Gx->isDense = false;
+      M->format = G->format = Gx->format = SparseRowColumn;
    }
 #else
    A = MakeDenseFormat(mesh->knots.size());
@@ -104,7 +104,8 @@ void FEM::SolveParabolic()
          SolveSLAE_LU(A, q1, d);
          //SolveSLAE_LOS(A, q1, d);
 #else
-         SolveSLAE_LOS(A, q1, d);
+         SolveSLAE_LU(A, q1, d);
+         //SolveSLAE_LOS(A, q1, d);
 #endif // DENSE
 
          //WriteMatrix(A);
@@ -159,6 +160,42 @@ void FEM::Output(std::ofstream& out)
       out.width(15);
       out << "\n";
    }
+
+   std::ofstream out2("speed.txt", std::ofstream::in);
+   out.close();
+   out.open("speed.txt", std::ofstream::trunc);
+
+   out.setf(std::ios::right);
+   out.width(15);
+   out << "\nx" << std::fixed;
+   out.width(15);
+   out << "y";
+   out.width(15);
+   //out << "z";
+   //out.width(15);
+   out << "v";
+   out.width(15);
+   out << "\n";
+   out << std::setprecision(7);
+
+   for (int i = 0; i < num_of_knots; i++)
+   {
+      knot v = mesh->GetVelocity(mesh->knots[i], 1);
+      out << std::defaultfloat;
+      out << mesh->knots[i].x;
+      out.width(15);
+      out << mesh->knots[i].y;
+      out.width(30);
+      //out << mesh->knots[i].z;
+      //out.width(15);
+      out << std::scientific;
+      out.width(15);
+      out << sqrt(v.x * v.x + v.y * v.y);
+      out.width(15);
+      out << "\n";
+   }
+
+
 }
 
 void FEM::AddFirstBounds(real time)
@@ -167,22 +204,28 @@ void FEM::AddFirstBounds(real time)
    {
       for (int i = 0; i < 2; i++)
       {
-         if (A->isDense)
+         switch (A->format)
          {
-            for (size_t ii = 0; ii < A->dim; ii++)
-               A->dense[i][ii] = 0.;
-            A->dense[i][i] = 1.;
+            case Dense:
+               for (size_t ii = 0; ii < A->dim; ii++)
+                  A->dense[i][ii] = 0.;
+               A->dense[i][i] = 1.;
+
+               break;
+            case SparseProfile:
+               break;
+
+            case SparseRowColumn:
+               A->di[cond.knots_num[i]] = 1.;
+               for (int j = A->ig[cond.knots_num[i]]; j < A->ig[cond.knots_num[i] + 1]; j++)
+                  A->l[j] = 0.;
+               for (int ii = 0; ii < A->dim; ii++)                // идем по столбцам
+                  for (int j = A->ig[ii]; j < A->ig[ii + 1]; j++)   // идем элементам в столбце
+                     if (A->jg[j] == cond.knots_num[i])          // в нужной строке элемент?
+                        A->u[j] = 0.;
+               break;
          }
-         else
-         {
-            A->di[cond.knots_num[i]] = 1.;
-            for (int j = A->ig[cond.knots_num[i]]; j < A->ig[cond.knots_num[i] + 1]; j++)
-               A->l[j] = 0.;
-            for (int ii = 0; ii < A->dim; ii++)                // идем по столбцам
-               for (int j = A->ig[ii]; j < A->ig[ii + 1]; j++)   // идем элементам в столбце
-                  if (A->jg[j] == cond.knots_num[i])          // в нужной строке элемент?
-                     A->u[j] = 0.;
-         }
+
 #ifdef DEBUG2
          if (time > 1e-10)
             d[cond.knots_num[i]] = bound1func(mesh->knots[cond.knots_num[i]], time, cond.n_test);
@@ -337,9 +380,18 @@ void FEM::AssembleMatricies(bool isTimed, real time)
 {
    real mulM = isTimed ? 1. / dt : 1.;
    real mulGx = isTimed ? 1.0 : 0.0;
-
-   if (!A->isDense)
+   switch (A->format)
    {
+   case Dense:
+      for (size_t i = 0; i < A->dim; i++)
+         for (size_t j = 0; j < A->dim; j++)
+            A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gx->dense[i][j];
+
+      break;
+   case SparseProfile:
+      break;
+
+   case SparseRowColumn:
       for (int i = 0; i < A->l.size(); i++)
       {
          A->l[i] = mulM * M->l[i] + G->l[i] + mulGx * Gx->l[i];
@@ -347,13 +399,9 @@ void FEM::AssembleMatricies(bool isTimed, real time)
       }
       for (int i = 0; i < A->dim; i++)
          A->di[i] = mulM * M->di[i] + G->di[i] + mulGx * Gx->di[i];
+      break;
    }
-   else
-   {
-      for (size_t i = 0; i < A->dim; i++)
-         for (size_t j = 0; j < A->dim; j++)
-            A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gx->dense[i][j];
-   }
+
 
    if (isTimed)
    {
@@ -393,16 +441,26 @@ void FEM::CreateM(element& elem)
    real h2t_72 = h * h * t / 72., 
         htr_36 = h * t * r1 / 36.;
 
-   localC[0][0] = 
-   localC[1][1] = h2t_72 * 2. + htr_36 * 4.;       // +
-   localC[2][2] = 
-   localC[3][3] = h2t_72 * 6. + htr_36 * 4.;       // +
-   localC[0][3] = localC[3][0] =                            // +
-   localC[1][2] = localC[2][1] = h2t_72      + htr_36;  // +
-   localC[0][2] = localC[2][0] =                            //
-   localC[1][3] = localC[3][1] = h2t_72 * 2. + htr_36 * 2.;  //
-   localC[0][1] = localC[1][0] = h2t_72      + htr_36 * 2.;  // +
-   localC[2][3] = localC[3][2] = h2t_72 * 3. + htr_36 * 2.;  // +
+   real localMz[4][4] = {{4,2,2,1},
+                         {2,4,1,2},
+                         {2,1,4,2},
+                         {1,2,2,4}},
+        localMr[4][4] = {{2,2,1,1},
+                         {2,6,1,3},
+                         {1,1,2,2},
+                         {1,3,2,6} };
+         
+
+   //localC[0][0] = 
+   //localC[1][1] = h2t_72 * 2. + htr_36 * 4.;       // +
+   //localC[2][2] = 
+   //localC[3][3] = h2t_72 * 6. + htr_36 * 4.;       // +
+   //localC[0][3] = localC[3][0] =                            // +
+   //localC[1][2] = localC[2][1] = h2t_72      + htr_36;  // +
+   //localC[0][2] = localC[2][0] =                            //
+   //localC[1][3] = localC[3][1] = h2t_72 * 2. + htr_36 * 2.;  //
+   //localC[0][1] = localC[1][0] = h2t_72      + htr_36 * 2.;  // +
+   //localC[2][3] = localC[3][2] = h2t_72 * 3. + htr_36 * 2.;  // +
 
    // 2 1 2 1
    // 1 2 1 2
@@ -411,9 +469,10 @@ void FEM::CreateM(element& elem)
 
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
-         //localM[i][j] = Integrate(Mij, i, j, elem->knots_num);
+      {
+         localC[i][j] = h2t_72 * localMr[i][j] + htr_36 * localMz[i][j];
          localM[i][j] = elem.gam * localC[i][j];
-               
+      }        
 }
 
 void FEM::CreateG(element& elem)
@@ -422,102 +481,95 @@ void FEM::CreateG(element& elem)
    real r2 = mesh->knots[elem.knots_num[1]].x;
    real z1 = mesh->knots[elem.knots_num[0]].y;
    real z2 = mesh->knots[elem.knots_num[2]].y;
-   real h = r2 - r1, t = z2 - z1;
-   //real h2_4t = h * h / t / 4.,
-   //     hr_3t = h * r1 / t / 3.,
-   //     rt_3h = r1 * t / h / 3.;
-   //
-   //localG[0][0] = localG[2][2] =  h2_4t / 3. + hr_3t      + t / 6.  + rt_3h;
-   //localG[1][1] = localG[3][3] =  h2_4t      + hr_3t      + t / 6.  + rt_3h;
-   //localG[3][0] = localG[2][1] = 
-   //localG[1][2] = localG[0][3] = -h2_4t / 3. - hr_3t / 2. - t / 12. - rt_3h / 2.;
-   //localG[0][1] = localG[1][0] = 
-   //localG[3][2] = localG[2][3] =  h2_4t / 3. + hr_3t / 2. - t / 6.  - rt_3h;
-   //localG[1][3] = localG[3][1] = -h2_4t      - hr_3t      + t / 12. + rt_3h / 2.;
-   //localG[0][2] = localG[2][0] = -h2_4t / 3. - hr_3t      + t / 12. + rt_3h / 2.;
-   real ht2r_12hk = t * (2 * r1 + h) / h / 12.,
-        hr_6t = h * r1 / t / 6.,
-        h2_12t = h * h / t / 12.;
-   localG[0][0] = 
-   localG[2][2] = 2. * ht2r_12hk + 2. * hr_6t +      h2_12t;
-   localG[1][1] = 
-   localG[3][3] = 2. * ht2r_12hk + 2. * hr_6t + 3. * h2_12t;
-   localG[1][2] = localG[2][1] = 
-   localG[0][3] = localG[3][0] = - ht2r_12hk - hr_6t - h2_12t;
-   localG[0][1] = localG[1][0] =
-   localG[2][3] = localG[3][2] =  -2 * ht2r_12hk + hr_6t + h2_12t;
-   localG[1][3] = localG[3][1] =  ht2r_12hk - 2. * hr_6t - 3. * h2_12t;
-   localG[0][2] = localG[2][0] =  ht2r_12hk - 2. * hr_6t - h2_12t;
+   real hr = r2 - r1, hz = z2 - z1;
+
+   real h = hz * (2 * r1 + hr) / hr / 12.,
+        p = hr * r1 / hz / 6.,
+        q = hr * hr / hz / 12.;
+   real localH[4][4]{ {2,-2,1,-1},
+                      {-2,2,-1,1},
+                      {1,-1,2,-2},
+                      {-1,1,-2,2} },
+
+        localP[4][4]{ {2,1,-2,-1},
+                      {1,2,-1,-2},
+                      {-2,-1,2,1},
+                      {-1,-2,1,2} },
+
+        localQ[4][4]{ {1,1,-1,-1},
+                      {1,3,-1,-3},
+                      {-1,-1,1,1},
+                      {-1,-3,1,3} };
+
+   //localG[0][0] = 
+   //localG[2][2] = 2. * h + 2. * p +      q;
+   //localG[1][1] = 
+   //localG[3][3] = 2. * h + 2. * p + 3. * q;
+   //localG[1][2] = localG[2][1] = 
+   //localG[0][3] = localG[3][0] = - h - p - q;
+   //localG[0][1] = localG[1][0] =
+   //localG[2][3] = localG[3][2] =  -2 * h + p + q;
+   //localG[1][3] = localG[3][1] =  h - 2. * p - 3. * q;
+   //localG[0][2] = localG[2][0] =  h - 2. * p - q;
 
 
 
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
-         localG[i][j] *= elem.lam;//* Integrate(Gij, i, j, elem->knots_num);
+         localG[i][j] = elem.lam * (h * localH[i][j] + p * localP[i][j] + q * localQ[i][j]);//* Integrate(Gij, i, j, elem->knots_num);
 
 }
 
 void FEM::CreateExtraG(element& elem)
 {
 
-   knot v1 = mesh->GetVelocity(mesh->knots[elem.knots_num[0]], 1);
-   knot v2 = mesh->GetVelocity(mesh->knots[elem.knots_num[1]], 1);
-   knot v3 = mesh->GetVelocity(mesh->knots[elem.knots_num[2]], 1);
-   knot v4 = mesh->GetVelocity(mesh->knots[elem.knots_num[3]], 1);
+
+   knot k1 =  mesh->knots[elem.knots_num[0]];
+   knot k2 =  mesh->knots[elem.knots_num[1]];
+   knot k3 =  mesh->knots[elem.knots_num[2]];
+   knot k4 =  mesh->knots[elem.knots_num[3]];
+
+   knot v4[4] = {mesh->GetVelocity(k1, 1),
+                mesh->GetVelocity(k2, 1),
+                mesh->GetVelocity(k3, 1),
+                mesh->GetVelocity(k4, 1)};
+
+   knot c = mesh->intersection(k1, k4, k2, k3);
+   knot v = mesh->GetVelocity(c, 1);
 
    real r1 = mesh->knots[elem.knots_num[0]].x;
    real r2 = mesh->knots[elem.knots_num[1]].x;
    real z1 = mesh->knots[elem.knots_num[0]].y;
    real z2 = mesh->knots[elem.knots_num[2]].y;
-   real h = r2 - r1, t = z2 - z1;
-   real ht_9 = h * t / 9.,
-        tp_6 = t  * r1 / 6.,
-        t2_8 = t * t / 8.,
-        hp_6 = h * r1 / 6.;
+   real hr = r2 - r1, hz = z2 - z1;
 
-   localGx[0][0] = v1.x * (-ht_9 / 2. - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6     );
-   localGx[1][0] = v2.x * (-ht_9      - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   localGx[2][0] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6     );
-   localGx[3][0] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-                           
-   localGx[0][1] = v1.x * (-ht_9 / 2. - tp_6     ) + v2.y * (t2_8 / 3. + hp_6 / 2.);
-   localGx[1][1] = v2.x * (-ht_9      - tp_6     ) + v2.y * (t2_8      + hp_6     );
-   localGx[2][1] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v2.y * (t2_8 / 3. + hp_6 / 2.);
-   localGx[3][1] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v2.y * (t2_8      + hp_6     );
-                           
-   localGx[0][2] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6);
-   localGx[1][2] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
-   localGx[2][2] = v3.x * ( ht_9 / 2. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6);
-   localGx[3][2] = v4.x * ( ht_9 / 1. + tp_6     ) + v3.y * (-t2_8 / 3. - hp_6 / 2.);
-                           
-   localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * (t2_8 / 3. + hp_6 / 2.);
-   localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * (t2_8      + hp_6     );
-   localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * (t2_8 / 3. + hp_6 / 2.);
-   localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * (t2_8      + hp_6     ); 
+   real h = hr * hz / 36.,
+        p = hz * r1 / 12.,
+        q = hr * r1 / 12.,
+        t = hr * hr / 24.;
+   // my
+   real localH[4][4]{{-2,2,-1,1}, 
+                     {-4,4,-2,2},
+                     {-1,1,-2,2},
+                     {-2,2,-4,4}},
+        localP[4][4]{{-2,2,-1,1},
+                     {-2,2,-1,1},
+                     {-1,1,-2,2},
+                     {-1,1,-2,2} },
+        localQ[4][4]{{-2,-1,2,1},
+                     {-1,-2,1,2},
+                     {-2,-1,2,1},
+                     {-1,-2,1,2} },
+        localT[4][4]{{-1,-1,1,1},
+                     {-1,-3,1,3},
+                     {-1,-1,1,1},
+                     {-1,-3,1,3} };
 
-   //localGx[0][0] = v1.x * (-ht_9 / 2. - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6     );
-   //localGx[1][0] = v2.x * (-ht_9      - tp_6     ) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   //localGx[2][0] = v3.x * (-ht_9 / 4. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6     );
-   //localGx[3][0] = v4.x * (-ht_9 / 2. - tp_6 / 2.) + v1.y * (-t2_8 / 3. - hp_6 / 2.);
-   //
-   //localGx[0][1] = v1.x * ( ht_9 / 2. + tp_6     ) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
-   //localGx[1][1] = v2.x * ( ht_9      + tp_6     ) + v2.y * (-t2_8      - hp_6     );
-   //localGx[2][1] = v3.x * ( ht_9 / 4. + tp_6 / 2.) + v2.y * (-t2_8 / 3. - hp_6 / 2.);
-   //localGx[3][1] = v4.x * ( ht_9 / 2. + tp_6 / 2.) + v2.y * (-t2_8      - hp_6     );
-   //
-   //localGx[0][2] = v1.x * (-ht_9 / 4. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6     );
-   //localGx[1][2] = v2.x * (-ht_9 / 2. - tp_6 / 2.) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
-   //localGx[2][2] = v3.x * (-ht_9 / 2. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6     );
-   //localGx[3][2] = v4.x * (-ht_9 / 1. - tp_6     ) + v3.y * ( t2_8 / 3. + hp_6 / 2.);
-   //
-   //localGx[0][3] = v1.x * ( ht_9 / 4. + tp_6 / 2.) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
-   //localGx[1][3] = v2.x * ( ht_9 / 2. + tp_6 / 2.) + v4.y * ( t2_8      + hp_6     );
-   //localGx[2][3] = v3.x * ( ht_9 / 2. + tp_6     ) + v4.y * ( t2_8 / 3. + hp_6 / 2.);
-   //localGx[3][3] = v4.x * ( ht_9 / 1. + tp_6     ) + v4.y * ( t2_8      + hp_6     );
 
    for (int i = 0; i < 4; i++)
       for (int j = 0; j < 4; j++)
-         localGx[i][j] *= elem.gam;
+         //localGx[i][j] = elem.gam * (v4[i].x * h * localH[i][j] + v4[i].x * p * localP[i][j] + v4[i].y * q * localQ[i][j] + v4[i].y * t * localT[i][j]);
+         localGx[i][j] = elem.gam * (v.x * h * localH[i][j] + v.x * p * localP[i][j] + v.y * q * localQ[i][j] + v.y * t * localT[i][j]);
 }
 
 void FEM::Createb(element& elem, real time)

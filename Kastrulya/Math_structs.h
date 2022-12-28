@@ -9,18 +9,21 @@ typedef double real;
 
 namespace maths {
 
+   enum MatrixFormat {Dense = 1, SparseRowColumn, SparseProfile};
    struct Matrix {
       std::vector<real> l, u, di;
       std::vector<int> ig, jg;
       std::vector<std::vector<real>> dense;
       size_t dim = 0;
-      bool isDense = true;
+      MatrixFormat format = MatrixFormat::Dense;
    };
 
    
 
-   Matrix* MakeSparseFormat(int localsize, int size, Mesh* mesh);
+   Matrix* MakeSparseRowColumnFormat(int localsize, int size, Mesh* mesh); // RCF
    Matrix* MakeDenseFormat(int size);
+   Matrix* MakeSparseProfileFormat(int localsize, int size, Mesh* mesh);
+   Matrix* MakeSparseProfileFormatFromRCF(Matrix* M);
 
    void copy(std::vector<real>& to, std::vector<real>& from);
    void copy(std::vector<int>& to, std::vector<int>& from);
@@ -34,7 +37,6 @@ namespace maths {
    void WriteMatrix(Matrix* M);
    void MatSymmetrisation(Matrix* M, std::vector<real>& b, int i);
    Matrix* MakeKholessky(Matrix* A);
-   void SolveLLT(std::vector<real>& q, std::vector<real>& b, Matrix* M);
    void SolveForL(std::vector<real>& q, std::vector<real>& b, Matrix* M);
    void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M);
 }

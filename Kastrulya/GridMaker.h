@@ -14,6 +14,7 @@ struct knot
 {
    //unsigned int knot_num;
    knot(real _x, real _y, real _z) : x(_x), y(_y), z(_z) {}
+   knot(real _x, real _y) : x(_x), y(_y), z(0) {}
    knot() : x(0.0), y(0.0), z(0.0) {}
    real x, y, z;
    knot& operator=(const knot& k) {
@@ -138,14 +139,16 @@ public:
          {
             // v - Верх
             y = areas[waterAreaNum].Y2;
-            x = (k.y - y1) / (y - y1) * (x2 - x1) + x1;
+            //x = (k.y - y1) / (y - y1) * (x2 - x1) + x1;
+            x = (y - y1) / (y2 - y1) * (x2 - x1) + x1;
             kn.x = -1.;
          }
          else          
          {
             // > - лево
             x = areas[waterAreaNum].X1;
-            y = (k.x - x1) / (x - x1) * (y2 - y1) + y1;
+            //y = (k.x - x1) / (x - x1) * (y2 - y1) + y1;
+            y = (x - x1) / (x2 - x1) * (y2 - y1) + y1;
             kn.y = -1.;
          }
       else
@@ -153,24 +156,54 @@ public:
          {
             // < - право
             x = areas[waterAreaNum].X2;
-            y = (k.x - x1) / (x - x1) * (y2 - y1) + y1;
+            //y = (k.x - x1) / (x - x1) * (y2 - y1) + y1;
+            y = (x - x1) / (x2 - x1) * (y2 - y1) + y1;
             kn.y = 1.;
          }
          else
          {
             // ^ - низ
             y = areas[waterAreaNum].Y1;
-            x = (k.y - y1) / (y - y1) * (x2 - x1) + x1;
+            //x = (k.y - y1) / (y - y1) * (x2 - x1) + x1;
+            x = (y - y1) / (y2 - y1) * (x2 - x1) + x1;
             kn.x = 1.;
          }
       len = sqrt(pow(x - c.x, 2.) + pow(y - c.y, 2.));
 
       real t = klen / len;
-      real v = t > 0.5 ? (1. - t) * 2. * max_v : t * 2. * max_v;
-      kn.x *= v;
-      kn.y *= v;
+      //real v = t > 0.5 ? (1. - t) * 2. * max_v : t * 2. * max_v;
+      real v = (1. - t) * max_v;
+      kn.x *= -v;
+      kn.y *= -v;
       return kn;
    };
+   bool isInTriangle(knot& k1, knot& k2, knot& k3, knot& p)
+   {
+      knot k12 = knot(k2.x - k1.x, k2.y - k1.y),
+         k23 = knot(k3.x - k2.x, k3.y - k2.y),
+         k31 = knot(k1.x - k3.x, k1.y - k3.y),
+         pk1 = knot(p.x - k1.x, p.y - k1.y),
+         pk2 = knot(p.x - k2.x, p.y - k2.y),
+         pk3 = knot(p.x - k3.x, p.y - k3.y);
+      real pk12 = Cross(pk1, k12).z, pk23 = Cross(pk2, k23).z, pk31 = Cross(pk3, k31).z;
+
+      return (pk12 < 1e-12 && pk23 < 1e-12 && pk31 < 1e-12) || (pk12 >= 1e-12 && pk23 >= 1e-12 && pk31 >= 1e-12);
+   }
+   knot& Cross(knot& k1, knot& k2)
+   {
+      knot k = knot(k1.y * k2.z - k1.z * k2.y, k1.x * k2.z - k1.z * k2.x, k1.x * k2.y - k1.y * k2.x);
+      return k;
+   }
+   knot& intersection(knot p1, knot p2, knot q1, knot q2)
+   {
+      knot k;
+      real d = (p1.x - p2.x) * (q1.y - q2.y) - (q1.x - q2.x) * (p1.y - p2.y);
+      k.x = ((p1.x * p2.y - p1.y * p2.x) * (q1.x - q2.x) - (q1.x * q2.y - q1.y * q2.x) * (p1.x - p2.x)) / d;
+      k.y = ((p1.x * p2.y - p1.y * p2.x) * (q1.y - q2.y) - (q1.x * q2.y - q1.y * q2.x) * (p1.y - p2.y)) / d;
+
+      return k;
+   }
+
    void MakeMesh();
 
 private: 

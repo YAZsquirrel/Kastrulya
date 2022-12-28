@@ -5,15 +5,15 @@
 #include <atomic>
 #include <numeric>
 #include <array>
-#include <ppl.h>
+//#include <ppl.h>
 #include <time.h>
-
-using namespace concurrency;
+//#include <concrtrm.h>
+//using namespace concurrency;
 
 
 namespace maths
 {
-   Matrix* MakeSparseFormat(int localsize, int size, Mesh* mesh)
+   Matrix* MakeSparseRowColumnFormat(int localsize, int size, Mesh* mesh)
    {
       const int N = localsize;
       // set connection table
@@ -44,7 +44,7 @@ namespace maths
       M->l.resize(M->ig[size], 0.);
       M->u.resize(M->ig[size], 0.);
       M->di.resize(size, 0.);
-      M->isDense = false;
+      M->format = MatrixFormat::SparseRowColumn;
       return M;
 
    }
@@ -59,10 +59,75 @@ namespace maths
       return A;
    }
 
+   Matrix* MakeSparseProfileFormatFromRCF(Matrix* M)
+   {
+      Matrix *N = new Matrix;
+      N->di.resize(M->dim);
+      N->dim = M->dim;
+      for (int i = 0; i < M->dim; i++)
+         N->di[i] = M->di[i];
+
+      N->l.clear();
+      N->u.clear();
+      N->l.reserve(M->ig[M->dim] * 2);
+      N->u.reserve(M->ig[M->dim] * 2);
+      N->ig.resize(M->dim + 1);
+
+      int col = 0, count = 0;
+      for (int i = 0; i < M->dim; i++)
+      {
+         N->ig[i] = count;
+         col = M->jg[M->ig[i]];
+         for (int j = M->ig[i]; j < M->ig[i + 1]; j++)
+         {
+            // i - row, _ja[j] - col
+            if (col == M->jg[j])
+            {
+               N->l.push_back(M->l[j]);
+               N->u.push_back(M->u[j]);
+               count++;
+               col++;
+            }
+            else
+            {
+               while (col != M->jg[j])
+               {
+                  N->l.push_back(0.0);
+                  N->u.push_back(0.0);
+                  count++;
+                  col++;
+               }
+               N->l.push_back(M->l[j]);
+               N->u.push_back(M->u[j]);
+               count++;
+               col++;
+            }
+         }
+         while (col != i)
+         {
+            N->l.push_back(0.0);
+            N->u.push_back(0.0);
+            count++;
+            col++;
+         }
+      }
+      N->ig[M->dim] = count;
+
+      N->format = SparseProfile;
+      return N;
+   }
+
    void AddElement(Matrix* M, int i, int j, real elem)
    {
-      if (!M->isDense)
+      switch (M->format)
       {
+      case Dense:
+            M->dense[i][j] += elem;
+         break;
+      case SparseProfile:
+
+         break;
+      case SparseRowColumn:
          bool found = false;
          if (i == j)
             M->di[i] += elem;
@@ -82,15 +147,31 @@ namespace maths
             if (found)
                M->l[n] += elem; // i-1??
          }
+         break;
+
       }
-      else
-         M->dense[i][j] += elem;
+
+         
    }
 
    void MatxVec(std::vector<real>& v, Matrix* M, std::vector<real>& b) // v = M*b
    {
-      if (!M->isDense)
+      switch (M->format)
       {
+      case Dense:
+         for (size_t i = 0; i < M->dim; i++)
+         {
+            real sum = 0;
+#pragma omp parallel for reduction(+:sum)
+            for (int j = 0; j < M->dim; j++)
+               sum += M->dense[i][j] * b[j];
+            v[i] = sum;
+         }
+         break;
+      case SparseProfile:
+
+         break;
+      case SparseRowColumn:
          for (int i = 0; i < M->dim; i++)
             v[i] = M->di[i] * b[i];
 
@@ -100,17 +181,8 @@ namespace maths
                v[i] += M->l[j] * b[M->jg[j]];
                v[M->jg[j]] += M->u[j] * b[i];
             }
-      }
-      else
-      {
-         for (size_t i = 0; i < M->dim; i++)
-         {
-            real sum = 0;
-            #pragma omp parallel for reduction(+:sum)
-            for (int j = 0; j < M->dim; j++)
-               sum += M->dense[i][j] * b[j];
-            v[i] = sum;
-         }
+         break;
+
       }
    }
 
@@ -128,6 +200,7 @@ namespace maths
    real scalar(std::vector<real>& v, std::vector<real>& u)
    {
       real sum = 0.;
+
       for (int i = 0; i < v.size(); i++)
          sum += v[i] * u[i];
       return sum;
@@ -159,12 +232,15 @@ namespace maths
          skp = scalar(p, p);
          alpha = scalar(p, r) / skp;
 
-#pragma omp parallel for
+         real xsum = 0., rsum = 0.; 
+#pragma omp parallel for reduction(+:xsum,rsum)
          for (i = 0; i < M->dim; i++)
          {
-            x[i] += alpha * z[i];
-            r[i] -= alpha * p[i];
+            xsum += alpha * z[i];
+            rsum += alpha * p[i];
          }
+         x[i] += xsum;
+         r[i] -= rsum;
          MatxVec(Ar, M, r);
          beta = -scalar(p, Ar) / skp;
 #pragma omp parallel for
@@ -181,59 +257,137 @@ namespace maths
    void SolveSLAE_LU(Matrix* A, std::vector<real>& q, std::vector<real>& b)
    {
       std::vector<real> y, &x = q;
+      x.clear();
+      x.resize(A->dim, 0);
       y.resize(A->dim, 0);
       std::clock_t start = clock();
 
-      Matrix *LU = MakeDenseFormat(A->dim);
-      // L 
-
-      for (int i = 0; i < LU->dim; i++)
+      Matrix* LU = nullptr;
+      switch (A->format)
       {
-          for (int j = 0; j < LU->dim; j++)
-          {
-              if (i <= j) // U
-              {
-                  //real sum = 0.;
-                  //combinable<double> sumc;
-
-                  combinable<real> sum;
-                  
-                  //#pragma omp parallel for reduction (+:sum)
-                  //for (int k = 0; k < i; k++)
-                  //    sum += LU->dense[i][k] * LU->dense[k][j];
-                  //LU->dense[i][j] = A->dense[i][j] - sum;
-
-                  parallel_for((size_t)0, (size_t)i, [&](size_t k)
-                  //for (int k = 0; k < i; k++) 
+         case Dense:
+         {
+            LU = MakeDenseFormat(A->dim);
+            for (int i = 0; i < LU->dim; i++)
+            {
+               for (int j = 0; j < LU->dim; j++)
+               {
+                  if (i <= j) // U
                   {
-                       sum.local() += LU->dense[i][k] * LU->dense[k][j];
-                  });
-                  LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
-              }
-              else // L
-              {
-                  //real sum = 0.;
-                  //#pragma omp parallel for reduction (+:sum)
-                  //for (int k = 0; k < j; k++)
-                  //    sum += LU->dense[i][k] * LU->dense[k][j];
-                  //LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+                     real sum = 0.;
+                     //#pragma omp parallel for reduction (+:sum)
+                     for (int k = 0; k < i; k++)
+                        sum += LU->dense[i][k] * LU->dense[k][j];
+                     LU->dense[i][j] = A->dense[i][j] - sum;
 
-                  combinable<real> sum;
+                     //combinable<real> sum;
+                  //parallel_for((size_t)0, (size_t)i, [&](size_t k)
+                  ////for (int k = 0; k < i; k++) 
+                  //{
+                  //     sum.local() += LU->dense[i][k] * LU->dense[k][j];
+                  //});
+                  //size_t sums_to_do = (size_t)i / thread_num;
+                  //sums_to_do = sums_to_do > 0 ? sums_to_do : 1;
+
+                     //parallel_for((size_t)0, (size_t)i, sums_to_do, [&](size_t k)
+                  //{
+                  //   real partsum = 0.;
+                  //   for (size_t l = k; l < k + sums_to_do && l < i; l++)
+                  //   {
+                  //      partsum += LU->dense[i][l] * LU->dense[l][j];
+                  //   }
+                  //   sum.local() += partsum;
+                  //
+                  //}, static_partitioner());
+                  //
+                  //LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
+                  //sum.clear();
+                  }
+                  else // L
+                  {
+                     real sum = 0.;
+                     //#pragma omp parallel for reduction (+:sum)
+                     for (int k = 0; k < j; k++)
+                        sum += LU->dense[i][k] * LU->dense[k][j];
+                     LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+
+                     //combinable<real> sum;
                   //sum = 0;
                   //for (int k = 0; k < j; k++)
+                  //parallel_for((size_t)0, (size_t)j, [&](size_t k)
+                  //{
+                  //    sum.local() += LU->dense[i][k] * LU->dense[k][j];
+                  //});
+                  // 
+                  //size_t sums_to_do = (size_t)j / thread_num;
+                  //sums_to_do = sums_to_do > 0 ? sums_to_do : 1;
+                  //parallel_for((size_t)0, (size_t)j, sums_to_do, [&](size_t k)
+                  //   {
+                  //      real partsum = 0.;
+                  //      for (size_t l = k; l < k + sums_to_do && l < j; l++)
+                  //      {
+                  //         partsum += LU->dense[i][l] * LU->dense[l][j];
+                  //      }
+                  //      sum.local() += partsum;
 
-                  parallel_for((size_t)0, (size_t)j, [&](size_t k)
+                     //   }, static_partitioner());
+
+
+                     //LU->dense[i][j] = (A->dense[i][j] - sum.combine(std::plus<real>())) / LU->dense[j][j];
+                     //sum.clear();
+                  }
+               }
+            }
+            break;
+         }
+         case SparseProfile:
+            break;
+         case SparseRowColumn:
+         {
+            LU = MakeSparseProfileFormatFromRCF(A);
+
+            for (int i = 1; i < LU->dim; i++)
+            {
+               int j0 = i - (LU->ig[i + 1] - LU->ig[i]);
+               for (int ii = LU->ig[i]; ii < LU->ig[i + 1]; ii++)
+               {
+                  int j = ii - LU->ig[i] + j0;
+                  double sum_l = 0, sum_u = 0;
+                  if (LU->ig[j] < LU->ig[j + 1])
                   {
-                      sum.local() += LU->dense[i][k] * LU->dense[k][j];
-                  });
-                  LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
-              }
-          }
-      }
+                     int j0j = j - (LU->ig[j + 1] - LU->ig[j]);
+                     int jjbeg = j0 < j0j ? j0j : j0; // max (j0, j0j)
+                     int jjend = j < i - 1 ? j : i - 1; // min (j, i - 1)
+                     for (int k = 0; k < jjend - jjbeg; k++)
+                     {
+                        int ind_prev = LU->ig[j] + jjbeg - j0j + k;
+                        int ind_now = LU->ig[i] + jjbeg - j0 + k;
+                        sum_l += LU->u[ind_prev] * LU->l[ind_now];
+                        sum_u += LU->u[ind_now] * LU->l[ind_prev];
+                     }
+                  }
+                  LU->l[ii] -= sum_l;
+                  LU->u[ii] -= sum_u;
+                  if (abs(LU->di[j]) < 1e-12) // matrix hasn't LU
+                  {
+                     // cout << "di[" << j << "] = " << di[j] << endl;
+                     throw std::exception("LU: zero devision!");
+                  }
+                  LU->u[ii] /= LU->di[j];
+                  LU->di[i] -= LU->l[ii] * LU->u[ii];
+               }
+            }
 
+            break;
+         }
+      }
       SolveForL(y, b, LU);
       SolveForU(x, y, LU);
+      // L 
 
+      //size_t thread_num  = GetProcessorCount();
+
+      
       std::clock_t end = clock();
 
       real res = 0;
@@ -242,8 +396,10 @@ namespace maths
       for (size_t i = 0; i < A->dim; i++)
          y[i] -= b[i];
       res = sqrt(scalar(y, y) / scalar(b, b));
+
       std::cout << res << '\n';
       std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
+      delete(LU);
 
    }
 
@@ -329,7 +485,7 @@ namespace maths
          res += b[i] - Ar[i];
       int k = 0;
 
-      for (; res - prevres < 1e-14 && k < 100000; k++)
+      for (; abs(res - prevres) < 1e-14 && k < 100000; k++)
       {         
          copy(q2, q1);
          for (size_t i = 0; i < M->dim; i++)
@@ -387,8 +543,20 @@ namespace maths
 
    void MatSymmetrisation(Matrix* M, std::vector<real>& b, int i)
    {
-      if (!M->isDense)
+      switch (M->format)
       {
+      case Dense:
+         for (int j = 0; j < M->dim; j++)
+         {
+            b[j] -= b[i] * M->dense[i][j];
+            M->dense[i][j] = 0;
+         }
+         M->dense[i][i] = 1.;
+         break;
+      case SparseProfile:
+
+         break;
+      case SparseRowColumn:
          for (int j = M->ig[i]; j < M->ig[i + 1]; j++)
          {
             b[M->jg[j]] -= b[i] * M->u[j];
@@ -404,16 +572,10 @@ namespace maths
                   M->l[j] = 0.0;
                }
          }
+         break;
+
       }
-      else 
-      {
-         for (int j = 0; j < M->dim; j++)
-         {
-            b[j] -= b[i] * M->dense[i][j];
-            M->dense[i][j] = 0;
-         }
-         M->dense[i][i] = 1.;
-      }
+
    }
 
    Matrix* MakeKholessky(Matrix *A) 
@@ -426,7 +588,7 @@ namespace maths
       M->l.resize(A->l.size());
       M->u.resize(A->u.size());
       M->di.resize(A->di.size());
-      M->isDense = false;
+      M->format = SparseRowColumn;
 
       copy(M->di, A->di);
       copy(M->ig, A->ig);
@@ -460,83 +622,105 @@ namespace maths
       return M;
    }
 
-   void SolveForL(std::vector<real>& q, std::vector<real>& b, Matrix* M) // y = 1/L * b
+   void SolveForL(std::vector<real>& q, std::vector<real>& b, Matrix* M) // y = 1/L * b // q = 1/L * b // forward
    {
-      if (!M->isDense)
+      switch (M->format)
       {
-         for (int k = 1, k1 = 0; k < M->dim; k++, k1++)
-         {
-            double sum = 0;
-            for (int i = M->ig[k1]; i < M->ig[k]; i++)
-               sum += M->l[i] * q[M->jg[i]];
-   
-            q[k1] = b[k1] - sum;
-         }
-      }
-      else
-      {
-         for (int i = 0; i < M->dim; i++)
-         {
-             //real sum = 0;
-             //#pragma omp parallel for reduction (+:sum)
-             //for (int j = 0; j < i; j++)
-             //    sum += q[j] * M->dense[i][j];
-             //q[i] = b[i] - sum;
-             // 
-             //std::atomic<real> sum = 0;
+         case Dense:
+            for (int i = 0; i < M->dim; i++)
+            {
+               real sum = 0;
+               //#pragma omp parallel for reduction (+:sum)
+               for (int j = 0; j < i; j++)
+                  sum += q[j] * M->dense[i][j];
+               q[i] = b[i] - sum;
+            }
+            break;
+         case SparseProfile:
 
-             combinable<real> sum;
-             parallel_for((size_t)0, (size_t)i, [&](size_t j)
-             //for (int j = 0; j < i; j++)
-             { 
-                 sum.local() += q[j] * M->dense[i][j];
-             });
+            //for (int i = 0; i < M->dim; i++)
+            //{
+            //   int k = i - (M->ig[i + 1] - M->ig[i]);
+            //   real sum = 0;
+            //   for (int j = M->ig[i]; j < M->ig[i + 1]; j++, k++)
+            //      sum += q[k] * M->l[j];
+            //
+            //   q[i] = b[i] - sum;
+            //}
+            for (int i = 0; i < M->dim; i++)
+            {
+               int k = i - (M->ig[i + 1] - M->ig[i]);
+               real sum = 0;
+               for (int j = M->ig[i]; j < M->ig[i + 1]; j++, k++)
+                  sum += q[k] * M->l[j];
+                //
+               q[i] = (b[i] - sum) / M->di[i];
+            }
+            break;
+         case SparseRowColumn:
+            for (int k = 1, k1 = 0; k < M->dim; k++, k1++)
+            {
+               double sum = 0;
+               for (int i = M->ig[k1]; i < M->ig[k]; i++)
+                  sum += M->l[i] * q[M->jg[i]];
 
-             q[i] = b[i] - sum.combine(std::plus<real>());
+               q[k1] = b[k1] - sum;
+            }
+            break;
 
-         }
       }
    }
-   void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M) // x = 1/U * y
+   void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M) // x = 1/U * y // q = 1/U * b // back
    {
-      if (!M->isDense)
+      switch (M->format)
       {
-         for (int k = M->dim - 1; k > 0; k--)
+      case Dense:
+         for (int i = M->dim - 1; i >= 0; i--)
          {
-            /// ??????????????????????????????????????
-            //real sum = b[k1];
-            ////q[k1] = b[k1] / M->di[k1];
-            ////double v_el = q[k1];
-            //
-            //for (int i = M->ig[k1]; i < M->ig[k]; i++)
-            //   b[M->jg[i]] -= M->l[i] * v_el;
+            real sum = b[i];
+            //#pragma omp parallel for reduction(-:sum)
+            for (int j = i + 1; j < M->dim; j++)
+               sum -= q[j] * M->dense[i][j];
+            q[i] = sum / M->dense[i][i];
+         }
+         break;
 
-            real sum = b[k];
+      case SparseProfile:
+         //for (int i = M->dim - 1; i >= 0; i--)
+         //{
+         //   real sum = b[i];
+         //   q[i] += b[i]
+         //   int j = i - (M->ig[i + 1] - M->ig[i]);
+         //   for (int k = M->ig[i]; k < M->ig[i + 1]; k++, j++)
+         //      q[j] -= M->u[k] * q[j];
+         //}
+         //
+         //for (int i = M->dim - 1; i >= 0; i--)
+         //   q[i] /= M->di[i];
 
-            for (int j = M->ig[k]; j < M->ig[k + 1]; j++) // -1?
-               sum -= M->l[j] * q[M->jg[j]];
-            
-            q[k] = sum / M->di[k];
-         } 
-      }
-      else
-      {
-          for (int i = M->dim - 1; i >= 0; i--)
-          {
-              //real sum = b[i];
-              //#pragma omp parallel for reduction(-:sum)
-              //for (int j = i + 1; j < M->dim; j++)
-              //    sum -= q[j] * M->dense[i][j];
-              //q[i] = sum / M->dense[i][i];
+         for (int i = M->dim - 1; i >= 0; i--)
+         {
+            //real sum = b[i];
+            int j = i - (M->ig[i + 1] - M->ig[i]);
+            q[i] += b[i];
+            for (int k = M->ig[i]; k < M->ig[i + 1]; k++, j++)
+               q[j] -= M->u[k] * q[i];
+         }
 
-              combinable<real> sum;
-              //for (int j = i + 1; j < M->dim; j++) 
-              parallel_for((size_t)(i + 1), M->dim, [&](size_t j)
-              {
-                  sum.local() += q[j] * M->dense[i][j];
-              });
-              q[i] = (b[i] - sum.combine(std::plus<real>())) / M->dense[i][i];
-          }
+         break;
+
+      case SparseRowColumn: // неправильно
+         for (int i = M->dim - 1; i >= 0; i--)
+         {
+            real sum = b[i];
+
+            for (int j = M->ig[i]; j < M->ig[i + 1]; j++) // -1?
+               sum -= M->u[j] * q[M->jg[j]];
+
+            q[i] = sum / M->di[i];
+         }
+         break;
+
       }
    }
 }

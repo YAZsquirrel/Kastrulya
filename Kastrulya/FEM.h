@@ -2,7 +2,7 @@
 
 //#define DEBUG2
 //#define DEBUG
-#define DENSE
+//#define DENSE
 
 #include "Math_structs.h"
 #include <functional>
