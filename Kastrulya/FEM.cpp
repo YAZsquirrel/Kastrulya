@@ -522,8 +522,6 @@ void FEM::CreateG(element& elem)
 
 void FEM::CreateExtraG(element& elem)
 {
-
-
    knot k1 =  mesh->knots[elem.knots_num[0]];
    knot k2 =  mesh->knots[elem.knots_num[1]];
    knot k3 =  mesh->knots[elem.knots_num[2]];

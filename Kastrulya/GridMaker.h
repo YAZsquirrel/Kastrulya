@@ -171,10 +171,10 @@ public:
       len = sqrt(pow(x - c.x, 2.) + pow(y - c.y, 2.));
 
       real t = klen / len;
-      //real v = t > 0.5 ? (1. - t) * 2. * max_v : t * 2. * max_v;
-      real v = (1. - t) * max_v;
-      kn.x *= -v;
-      kn.y *= -v;
+      real v = t > 0.5 ? (1. - t) * 2. * max_v : t * 2. * max_v;
+      //real v = (1. - t) * max_v;
+      kn.x *= v;
+      kn.y *= v;
       return kn;
    };
    bool isInTriangle(knot& k1, knot& k2, knot& k3, knot& p)
