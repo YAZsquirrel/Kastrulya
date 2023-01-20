@@ -254,140 +254,23 @@ namespace maths
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
    }
 
-   void SolveSLAE_LU(Matrix* A, std::vector<real>& q, std::vector<real>& b)
+   void SolveSLAE_LU(Matrix*& LU, Matrix* A, std::vector<real>& q, std::vector<real>& b)
    {
+      //Matrix* LU = *LUp;
+
       std::vector<real> y, &x = q;
       x.clear();
       x.resize(A->dim, 0);
       y.resize(A->dim, 0);
       std::clock_t start = clock();
 
-      Matrix* LU = nullptr;
-      switch (A->format)
-      {
-         case Dense:
-         {
-            LU = MakeDenseFormat(A->dim);
-            for (int i = 0; i < LU->dim; i++)
-            {
-               for (int j = 0; j < LU->dim; j++)
-               {
-                  if (i <= j) // U
-                  {
-                     real sum = 0.;
-                     //#pragma omp parallel for reduction (+:sum)
-                     for (int k = 0; k < i; k++)
-                        sum += LU->dense[i][k] * LU->dense[k][j];
-                     LU->dense[i][j] = A->dense[i][j] - sum;
+      if (LU == nullptr)
+         MakeLU(LU, A);
 
-                     //combinable<real> sum;
-                  //parallel_for((size_t)0, (size_t)i, [&](size_t k)
-                  ////for (int k = 0; k < i; k++) 
-                  //{
-                  //     sum.local() += LU->dense[i][k] * LU->dense[k][j];
-                  //});
-                  //size_t sums_to_do = (size_t)i / thread_num;
-                  //sums_to_do = sums_to_do > 0 ? sums_to_do : 1;
-
-                     //parallel_for((size_t)0, (size_t)i, sums_to_do, [&](size_t k)
-                  //{
-                  //   real partsum = 0.;
-                  //   for (size_t l = k; l < k + sums_to_do && l < i; l++)
-                  //   {
-                  //      partsum += LU->dense[i][l] * LU->dense[l][j];
-                  //   }
-                  //   sum.local() += partsum;
-                  //
-                  //}, static_partitioner());
-                  //
-                  //LU->dense[i][j] = A->dense[i][j] - sum.combine(std::plus<real>());
-                  //sum.clear();
-                  }
-                  else // L
-                  {
-                     real sum = 0.;
-                     //#pragma omp parallel for reduction (+:sum)
-                     for (int k = 0; k < j; k++)
-                        sum += LU->dense[i][k] * LU->dense[k][j];
-                     LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
-
-                     //combinable<real> sum;
-                  //sum = 0;
-                  //for (int k = 0; k < j; k++)
-                  //parallel_for((size_t)0, (size_t)j, [&](size_t k)
-                  //{
-                  //    sum.local() += LU->dense[i][k] * LU->dense[k][j];
-                  //});
-                  // 
-                  //size_t sums_to_do = (size_t)j / thread_num;
-                  //sums_to_do = sums_to_do > 0 ? sums_to_do : 1;
-                  //parallel_for((size_t)0, (size_t)j, sums_to_do, [&](size_t k)
-                  //   {
-                  //      real partsum = 0.;
-                  //      for (size_t l = k; l < k + sums_to_do && l < j; l++)
-                  //      {
-                  //         partsum += LU->dense[i][l] * LU->dense[l][j];
-                  //      }
-                  //      sum.local() += partsum;
-
-                     //   }, static_partitioner());
-
-
-                     //LU->dense[i][j] = (A->dense[i][j] - sum.combine(std::plus<real>())) / LU->dense[j][j];
-                     //sum.clear();
-                  }
-               }
-            }
-            break;
-         }
-         case SparseProfile:
-            break;
-         case SparseRowColumn:
-         {
-            LU = MakeSparseProfileFormatFromRCF(A);
-
-            for (int i = 1; i < LU->dim; i++)
-            {
-               int j0 = i - (LU->ig[i + 1] - LU->ig[i]);
-               for (int ii = LU->ig[i]; ii < LU->ig[i + 1]; ii++)
-               {
-                  int j = ii - LU->ig[i] + j0;
-                  double sum_l = 0, sum_u = 0;
-                  if (LU->ig[j] < LU->ig[j + 1])
-                  {
-                     int j0j = j - (LU->ig[j + 1] - LU->ig[j]);
-                     int jjbeg = j0 < j0j ? j0j : j0; // max (j0, j0j)
-                     int jjend = j < i - 1 ? j : i - 1; // min (j, i - 1)
-                     for (int k = 0; k < jjend - jjbeg; k++)
-                     {
-                        int ind_prev = LU->ig[j] + jjbeg - j0j + k;
-                        int ind_now = LU->ig[i] + jjbeg - j0 + k;
-                        sum_l += LU->u[ind_prev] * LU->l[ind_now];
-                        sum_u += LU->u[ind_now] * LU->l[ind_prev];
-                     }
-                  }
-                  LU->l[ii] -= sum_l;
-                  LU->u[ii] -= sum_u;
-                  if (abs(LU->di[j]) < 1e-12) // matrix hasn't LU
-                  {
-                     // cout << "di[" << j << "] = " << di[j] << endl;
-                     throw std::exception("LU: zero devision!");
-                  }
-                  LU->u[ii] /= LU->di[j];
-                  LU->di[i] -= LU->l[ii] * LU->u[ii];
-               }
-            }
-
-            break;
-         }
-      }
       SolveForL(y, b, LU);
       SolveForU(x, y, LU);
       // L 
 
-      //size_t thread_num  = GetProcessorCount();
-
-      
       std::clock_t end = clock();
 
       real res = 0;
@@ -399,8 +282,80 @@ namespace maths
 
       std::cout << res << '\n';
       std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
-      delete(LU);
+   }
 
+   void MakeLU(Matrix*& LU, Matrix* A)
+   {
+      switch (A->format)
+      {
+      case Dense:
+      {
+         LU = MakeDenseFormat(A->dim);
+         for (int i = 0; i < LU->dim; i++)
+         {
+            for (int j = 0; j < LU->dim; j++)
+            {
+               if (i <= j) // U
+               {
+                  real sum = 0.;
+                  //#pragma omp parallel for reduction (+:sum)
+                  for (int k = 0; k < i; k++)
+                     sum += LU->dense[i][k] * LU->dense[k][j];
+                  LU->dense[i][j] = A->dense[i][j] - sum;
+
+               }
+               else // L
+               {
+                  real sum = 0.;
+                  //#pragma omp parallel for reduction (+:sum)
+                  for (int k = 0; k < j; k++)
+                     sum += LU->dense[i][k] * LU->dense[k][j];
+                  LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
+               }
+            }
+         }
+         break;
+      }
+      case SparseProfile:
+         break;
+      case SparseRowColumn:
+      {
+         LU = MakeSparseProfileFormatFromRCF(A);
+
+         for (int i = 1; i < LU->dim; i++)
+         {
+            int j0 = i - (LU->ig[i + 1] - LU->ig[i]);
+            for (int ii = LU->ig[i]; ii < LU->ig[i + 1]; ii++)
+            {
+               int j = ii - LU->ig[i] + j0;
+               double sum_l = 0, sum_u = 0;
+               if (LU->ig[j] < LU->ig[j + 1])
+               {
+                  int j0j = j - (LU->ig[j + 1] - LU->ig[j]);
+                  int jjbeg = j0 < j0j ? j0j : j0; // max (j0, j0j)
+                  int jjend = j < i - 1 ? j : i - 1; // min (j, i - 1)
+                  for (int k = 0; k < jjend - jjbeg; k++)
+                  {
+                     int ind_prev = LU->ig[j] + jjbeg - j0j + k;
+                     int ind_now = LU->ig[i] + jjbeg - j0 + k;
+                     sum_l += LU->u[ind_prev] * LU->l[ind_now];
+                     sum_u += LU->u[ind_now] * LU->l[ind_prev];
+                  }
+               }
+               LU->l[ii] -= sum_l;
+               LU->u[ii] -= sum_u;
+               if (abs(LU->di[j]) < 1e-12) // matrix hasn't LU
+               {
+                  throw std::exception("LU: zero devision!");
+               }
+               LU->u[ii] /= LU->di[j];
+               LU->di[i] -= LU->l[ii] * LU->u[ii];
+            }
+         }
+
+         break;
+      }
+      }
    }
 
    void SolveSLAE_LOSnKholessky(Matrix* A, std::vector<real>& q, std::vector<real>& b)

@@ -5,41 +5,41 @@ FEM::FEM()
    std::ifstream ftime("TimeGridDescr.txt");
    ftime >> t_last >> dt >> tr >> u0 >> utest;
    ftime.close();
-   dt = dt > 1e-10 ? t_last / dt : 0.0;
+   dt = dt > 0.0 ? t_last / dt : 0.0;
    mesh = new Mesh();
    mesh->MakeMesh();
    num_of_knots = mesh->knots.size();
    num_of_FE = mesh->elems.size();
 #ifndef DENSE
    A = MakeSparseRowColumnFormat(4, mesh->knots.size(), mesh);
-    //A => G, M, Gx
+    //A => G, M, Gv
    {
       G = new Matrix();
-      Gx = new Matrix();
+      Gv = new Matrix();
       M = new Matrix();
-      Gx->dim = G->dim = M->dim = A->dim;
+      Gv->dim = G->dim = M->dim = A->dim;
       M->ig.resize(A->ig.size());
       G->ig.resize(A->ig.size());
-      Gx->ig.resize(A->ig.size());
+      Gv->ig.resize(A->ig.size());
       M->jg.resize(A->jg.size());
       G->jg.resize(A->jg.size());
-      Gx->jg.resize(A->jg.size());
+      Gv->jg.resize(A->jg.size());
       copy(M->ig, A->ig);
       copy(G->ig, A->ig);
-      copy(Gx->ig, A->ig);
+      copy(Gv->ig, A->ig);
       copy(M->jg, A->jg);
       copy(G->jg, A->jg);
-      copy(Gx->jg, A->jg);
+      copy(Gv->jg, A->jg);
       G->di.resize(A->dim);
-      Gx->di.resize(A->dim);
+      Gv->di.resize(A->dim);
       M->di.resize(A->dim);
       M->l.resize(A->l.size());
       G->l.resize(A->l.size());
-      Gx->l.resize(A->l.size());
+      Gv->l.resize(A->l.size());
       M->u.resize(A->u.size());
       G->u.resize(A->u.size());
-      Gx->u.resize(A->u.size());
-      M->format = G->format = Gx->format = SparseRowColumn;
+      Gv->u.resize(A->u.size());
+      M->format = G->format = Gv->format = SparseRowColumn;
    }
 #else
    A = MakeDenseFormat(mesh->knots.size());
@@ -104,7 +104,7 @@ void FEM::SolveParabolic()
          SolveSLAE_LU(A, q1, d);
          //SolveSLAE_LOS(A, q1, d);
 #else
-         SolveSLAE_LU(A, q1, d);
+         SolveSLAE_LU(LU, A, q1, d);
          //SolveSLAE_LOS(A, q1, d);
 #endif // DENSE
 
@@ -385,7 +385,7 @@ void FEM::AssembleMatricies(bool isTimed, real time)
    case Dense:
       for (size_t i = 0; i < A->dim; i++)
          for (size_t j = 0; j < A->dim; j++)
-            A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gx->dense[i][j];
+            A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gv->dense[i][j];
 
       break;
    case SparseProfile:
@@ -394,11 +394,11 @@ void FEM::AssembleMatricies(bool isTimed, real time)
    case SparseRowColumn:
       for (int i = 0; i < A->l.size(); i++)
       {
-         A->l[i] = mulM * M->l[i] + G->l[i] + mulGx * Gx->l[i];
-         A->u[i] = mulM * M->u[i] + G->u[i] + mulGx * Gx->u[i];
+         A->l[i] = mulM * M->l[i] + G->l[i] + mulGx * Gv->l[i];
+         A->u[i] = mulM * M->u[i] + G->u[i] + mulGx * Gv->u[i];
       }
       for (int i = 0; i < A->dim; i++)
-         A->di[i] = mulM * M->di[i] + G->di[i] + mulGx * Gx->di[i];
+         A->di[i] = mulM * M->di[i] + G->di[i] + mulGx * Gv->di[i];
       break;
    }
 
@@ -424,7 +424,7 @@ void FEM::AddToGlobalMatricies(element& elem)
          //localA[i][j] = localG[i][j] + localM[i][j];
          AddElement(M, elem.knots_num[i], elem.knots_num[j], localM[i][j]);
          AddElement(G, elem.knots_num[i], elem.knots_num[j], localG[i][j]);
-         AddElement(Gx, elem.knots_num[i], elem.knots_num[j], localGx[i][j]);
+         AddElement(Gv, elem.knots_num[i], elem.knots_num[j], localGx[i][j]);
          //AddElement(A, elem.knots_num[i], elem.knots_num[j], localA[i][j]);
       }
 

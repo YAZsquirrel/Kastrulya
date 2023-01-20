@@ -18,8 +18,6 @@ namespace maths {
       MatrixFormat format = MatrixFormat::Dense;
    };
 
-   
-
    Matrix* MakeSparseRowColumnFormat(int localsize, int size, Mesh* mesh); // RCF
    Matrix* MakeDenseFormat(int size);
    Matrix* MakeSparseProfileFormat(int localsize, int size, Mesh* mesh);
@@ -33,7 +31,8 @@ namespace maths {
    void SolveSLAE_LOS(Matrix* M, std::vector<real>& q, std::vector<real>& b);
    void SolveSLAE_LOSnKholessky(Matrix* M, std::vector<real>& q, std::vector<real>& b);
    void SolveSLAE_Relax(Matrix* M, std::vector<real>& q, std::vector<real>& b, real w);
-   void SolveSLAE_LU(Matrix* M, std::vector<real>& q, std::vector<real>& b);
+   void SolveSLAE_LU(Matrix *&LUp, Matrix* M, std::vector<real>& q, std::vector<real>& b);
+   void MakeLU(Matrix*& LU, maths::Matrix* A);
    void WriteMatrix(Matrix* M);
    void MatSymmetrisation(Matrix* M, std::vector<real>& b, int i);
    Matrix* MakeKholessky(Matrix* A);

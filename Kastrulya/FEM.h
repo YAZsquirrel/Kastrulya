@@ -41,7 +41,7 @@ private:
    void CreateExtraG(element& elem);
    void Createb(element& elem, real time);
 
-   Matrix* A, *M, *G, *Gx;
+   Matrix* A, *M, *G, *Gv, *LU;
    std::vector<real> b;
    std::vector<real> d;
    std::vector<real> q1;
