@@ -5,10 +5,7 @@
 #include <atomic>
 #include <numeric>
 #include <array>
-//#include <ppl.h>
 #include <time.h>
-//#include <concrtrm.h>
-//using namespace concurrency;
 
 
 namespace maths
@@ -58,6 +55,82 @@ namespace maths
          A->dense[i].resize(A->dim, 0.);
       return A;
    }
+
+   Matrix* MakeSparseRowFormatFromRCF(Matrix* M)
+   {
+       Matrix* SRF = new Matrix();
+
+       SRF->dim = M->dim;
+       SRF->format = MatrixFormat::SparseRow;
+
+       SRF->ig.resize(SRF->dim + 1);
+       SRF->jg.resize(M->ig[SRF->dim] + SRF->dim);
+       SRF->gg.resize(M->ig[SRF->dim] + SRF->dim, 0);
+       copy(SRF->di, M->di);
+
+       ConvertFromRSFToCSR(SRF->dim,
+           M->ig.data(), M->jg.data(), M->di.data(), M->u.data(),
+           (MKL_INT*)SRF->ig.data(), (MKL_INT*)SRF->jg.data(), SRF->gg.data());
+
+       return SRF;
+   }
+
+   void ConvertFromRSFToCSR(int nb, int* ig, int* jg, double* di, double* gg,
+       MKL_INT* ia, MKL_INT* ja, double* a)
+   {
+       int i, j, k;
+       std::vector<MKL_INT> adr;
+
+       // подсчитываем число элементов в каждой строчке
+       adr.resize(nb, 0);
+
+       for (i = 0; i < nb; i++)
+       {
+           adr[i] += 1; // диагональ
+
+           // верхний треугольник
+           for (j = ig[i]; j <= ig[i + 1] - 1; j++)
+           {
+               k = jg[j];
+               adr[k]++;
+           }
+       }
+
+       // ia
+       ia[0] = 0;
+       std::cout << nb << '\n';
+       for (i = 0; i < nb; i++)
+           ia[i + 1] = ia[i] + adr[i];
+
+       // ja,  a
+       for (i = 0; i < ig[nb] + nb; i++)
+           a[i] = 0;
+
+       for (i = 0; i < nb; i++)
+           adr[i] = ia[i]; // в какую позицию заносить значение
+
+       // диагональ
+       for (i = 0; i < nb; i++)
+       {
+           ja[adr[i]] = i;
+           a[adr[i]] = di[i];
+           adr[i]++;
+       }
+
+       // верхний треугольник
+       for (i = 0; i < nb; i++)
+       {
+           for (j = ig[i]; j <= ig[i + 1] - 1; j++)
+           {
+               k = jg[j];
+               ja[adr[k]] = i;
+               a[adr[k]] = gg[j];
+               
+               adr[k]++;
+           }
+       }
+   }
+
 
    Matrix* MakeSparseProfileFormatFromRCF(Matrix* M)
    {
@@ -254,6 +327,39 @@ namespace maths
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
    }
 
+   void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b)
+   {
+       MKL_INT n = 0;
+       MKL_INT mtype = 2; // real and symmetric positive definite
+       MKL_INT nrhs = 1;
+       void* pt[64];
+       MKL_INT maxfct = 1;
+       MKL_INT mnum = 1;
+       MKL_INT msglvl = 1;
+       MKL_INT phase = 13;
+       MKL_INT* perm = NULL;
+       MKL_INT iparam[64];
+       MKL_INT info = -100;
+
+       Matrix* B = MakeSparseRowFormatFromRCF(M);
+
+       PARDISO(pt, &maxfct, &mnum, &mtype, &phase, &n,
+           B->gg.data(), (MKL_INT*)B->ig.data(), (MKL_INT*)B->jg.data(), perm,
+           &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
+
+       std::vector<real> y, & x = q;
+       real res = 0;
+       y.resize(M->dim, 0);
+       MatxVec(y, M, x);
+       for (size_t i = 0; i < M->dim; i++)
+           y[i] -= b[i];
+       res = sqrt(scalar(y, y) / scalar(b, b));
+
+       std::cout << "res: " << res << '\n';
+       std::cout << "(N = " << M->dim << "): ";
+
+   }
+
    void SolveSLAE_LU(Matrix*& LU, Matrix* A, std::vector<real>& q, std::vector<real>& b)
    {
       //Matrix* LU = *LUp;
@@ -317,7 +423,9 @@ namespace maths
          break;
       }
       case SparseProfile:
+      case SparseRow: 
          break;
+
       case SparseRowColumn:
       {
          LU = MakeSparseProfileFormatFromRCF(A);

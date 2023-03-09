@@ -41,6 +41,8 @@ FEM::FEM()
       Gv->u.resize(A->u.size());
       M->format = G->format = Gv->format = SparseRowColumn;
    }
+
+    
 #else
    A = MakeDenseFormat(mesh->knots.size());
    G = MakeDenseFormat(mesh->knots.size());
@@ -54,6 +56,8 @@ FEM::FEM()
    q2.resize(num_of_knots, 0.);
    b.resize(num_of_knots, 0.);
    d.resize(num_of_knots, 0.);
+
+    
 }
 
 void FEM::SolveElliptic()
@@ -104,8 +108,8 @@ void FEM::SolveParabolic()
          SolveSLAE_LU(A, q1, d);
          //SolveSLAE_LOS(A, q1, d);
 #else
-         SolveSLAE_LU(LU, A, q1, d);
-         //SolveSLAE_LOS(A, q1, d);
+         //SolveSLAE_LU(LU, A, q1, d);
+         SolveSLAE_PARDISO(A, q1, d);
 #endif // DENSE
 
          //WriteMatrix(A);
