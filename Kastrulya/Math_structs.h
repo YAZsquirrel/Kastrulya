@@ -44,5 +44,5 @@ namespace maths {
    void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M);
 
    void ConvertFromRSFToCSR(int nb, int* ig, int* jg, double* di, double* gg,
-       MKL_INT* ia, MKL_INT* ja, double* a);
+       MKL_INT64* ia, MKL_INT64* ja, double* a);
 }

@@ -70,16 +70,16 @@ namespace maths
 
        ConvertFromRSFToCSR(SRF->dim,
            M->ig.data(), M->jg.data(), M->di.data(), M->u.data(),
-           (MKL_INT*)SRF->ig.data(), (MKL_INT*)SRF->jg.data(), SRF->gg.data());
+           (MKL_INT64*)SRF->ig.data(), (MKL_INT64*)SRF->jg.data(), SRF->gg.data());
 
        return SRF;
    }
 
    void ConvertFromRSFToCSR(int nb, int* ig, int* jg, double* di, double* gg,
-       MKL_INT* ia, MKL_INT* ja, double* a)
+       MKL_INT64* ia, MKL_INT64* ja, double* a)
    {
        int i, j, k;
-       std::vector<MKL_INT> adr;
+       std::vector<MKL_INT64> adr;
 
        // подсчитываем число элементов в каждой строчке
        adr.resize(nb, 0);
@@ -98,7 +98,6 @@ namespace maths
 
        // ia
        ia[0] = 0;
-       std::cout << nb << '\n';
        for (i = 0; i < nb; i++)
            ia[i + 1] = ia[i] + adr[i];
 
@@ -329,22 +328,22 @@ namespace maths
 
    void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b)
    {
-       MKL_INT n = 0;
-       MKL_INT mtype = 2; // real and symmetric positive definite
-       MKL_INT nrhs = 1;
+       MKL_INT64 n = 0;
+       MKL_INT64 mtype = 2; // real and symmetric positive definite
+       MKL_INT64 nrhs = 1;
        void* pt[64];
-       MKL_INT maxfct = 1;
-       MKL_INT mnum = 1;
-       MKL_INT msglvl = 1;
-       MKL_INT phase = 13;
-       MKL_INT* perm = NULL;
-       MKL_INT iparam[64];
-       MKL_INT info = -100;
+       MKL_INT64 maxfct = 1;
+       MKL_INT64 mnum = 1;
+       MKL_INT64 msglvl = 1;
+       MKL_INT64 phase = 13;
+       MKL_INT64* perm = NULL;
+       MKL_INT64 iparam[64];
+       MKL_INT64 info = -100;
 
        Matrix* B = MakeSparseRowFormatFromRCF(M);
 
-       PARDISO(pt, &maxfct, &mnum, &mtype, &phase, &n,
-           B->gg.data(), (MKL_INT*)B->ig.data(), (MKL_INT*)B->jg.data(), perm,
+       PARDISO_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
+           B->gg.data(), (MKL_INT64*)B->ig.data(), (MKL_INT64*)B->jg.data(), perm,
            &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
 
        std::vector<real> y, & x = q;
