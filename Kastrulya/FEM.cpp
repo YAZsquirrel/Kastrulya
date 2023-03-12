@@ -132,22 +132,23 @@ void FEM::SolveParabolic()
       Output(out);
       out.close();
    }
+
+   std::ofstream out("elements.txt", std::ofstream::in);
+   out.close();
+   out.open("elements.txt", std::ofstream::trunc);
+
+   for (int i =0 ; i < num_of_FE; i++)
+   {
+      for (int j = 0; j < 4; j++)
+         out << mesh->elems[i].knots_num[j];
+      out << '\n';
+   }
+   out.close();
+
 }
 
 void FEM::Output(std::ofstream& out)
 {
-   out.setf(std::ios::right);
-   out.width(15);
-   out << "\nx" << std::fixed;
-   out.width(15);
-   out << "y";
-   out.width(15);
-   //out << "z";
-   //out.width(15);
-   out << "q";
-   out.width(15);
-   out << "\n";
-   out << std::setprecision(7);
 
    for (int i = 0; i < num_of_knots; i++)
    {
@@ -156,8 +157,6 @@ void FEM::Output(std::ofstream& out)
       out.width(15);
       out << mesh->knots[i].y;
       out.width(30);
-      //out << mesh->knots[i].z;
-      //out.width(15);
       out << std::scientific;
       out.width(15);
       out << q1[i];
@@ -175,30 +174,8 @@ void FEM::Output(std::ofstream& out)
    out.width(15);
    out << "y";
    out.width(15);
-   //out << "z";
-   //out.width(15);
-   out << "v";
-   out.width(15);
    out << "\n";
    out << std::setprecision(7);
-
-   for (int i = 0; i < num_of_knots; i++)
-   {
-      knot v = mesh->GetVelocity(mesh->knots[i], 1);
-      out << std::defaultfloat;
-      out << mesh->knots[i].x;
-      out.width(15);
-      out << mesh->knots[i].y;
-      out.width(30);
-      //out << mesh->knots[i].z;
-      //out.width(15);
-      out << std::scientific;
-      out.width(15);
-      out << sqrt(v.x * v.x + v.y * v.y);
-      out.width(15);
-      out << "\n";
-   }
-
 
 }
 
