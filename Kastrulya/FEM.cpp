@@ -12,6 +12,8 @@ FEM::FEM()
    num_of_FE = mesh->elems.size();
 #ifndef DENSE
    A = MakeSparseRowColumnFormat(4, mesh->knots.size(), mesh);
+
+   MakeSparseRowFormatFromRCF(A, A_srf);
     //A => G, M, Gv
    {
       G = new Matrix();
@@ -79,6 +81,7 @@ void FEM::SolveParabolic()
 #else
       SolveElliptic();
 #endif // DEBUG
+
    else {
       for (int i = 0; i < q1.size(); i++)
          q1[i] = u0;
@@ -103,16 +106,14 @@ void FEM::SolveParabolic()
          }
          AssembleMatricies(true, t);
          //SolveSLAE_LOSnKholessky(A, q1, d);
-         //SolveSLAE_Relax(A, q1, d, 1.6);
 #ifdef DENSE
          SolveSLAE_LU(A, q1, d);
          //SolveSLAE_LOS(A, q1, d);
 #else
-         //SolveSLAE_LU(LU, A, q1, d);
-         SolveSLAE_PARDISO(A, q1, d);
+         EqualizeRSFToCSR(A, A_srf);
+         SolveSLAE_PARDISO(A_srf, q1, d);
 #endif // DENSE
 
-         //WriteMatrix(A);
          //copy(q1, q2);
 
       }  

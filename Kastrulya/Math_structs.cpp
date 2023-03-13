@@ -56,9 +56,9 @@ namespace maths
       return A;
    }
 
-   Matrix* MakeSparseRowFormatFromRCF(Matrix* M)
+   void MakeSparseRowFormatFromRCF(Matrix* M, Matrix*& M_srf)
    {
-       Matrix* SRF = new Matrix();
+       Matrix* SRF = M_srf = new Matrix();
 
        SRF->dim = M->dim;
        SRF->format = MatrixFormat::SparseRow;
@@ -68,68 +68,101 @@ namespace maths
        SRF->gg.resize(M->ig[SRF->dim] + SRF->dim, 0);
        copy(SRF->di, M->di);
 
-       ConvertFromRSFToCSR(SRF->dim,
-           M->ig.data(), M->jg.data(), M->di.data(), M->u.data(),
-           (MKL_INT64*)SRF->ig.data(), (MKL_INT64*)SRF->jg.data(), SRF->gg.data());
-
-       return SRF;
-   }
-
-   void ConvertFromRSFToCSR(int nb, int* ig, int* jg, double* di, double* gg,
-       MKL_INT64* ia, MKL_INT64* ja, double* a)
-   {
-       int i, j, k;
-       std::vector<MKL_INT64> adr;
-
-       // подсчитываем число элементов в каждой строчке
-       adr.resize(nb, 0);
-
-       for (i = 0; i < nb; i++)
+       std::ofstream logfile;
+       logfile.open("pardiso64.log");
+       if (!logfile)
        {
-           adr[i] += 1; // диагональ
-
-           // верхний треугольник
-           for (j = ig[i]; j <= ig[i + 1] - 1; j++)
-           {
-               k = jg[j];
-               adr[k]++;
-           }
+          std::cerr << "Cannot open pardiso64.log\n";
+          return;
        }
 
+       ConvertFromSRCFToSRF(M, SRF);
+   }
+
+   void ConvertFromSRCFToSRF(Matrix* M_srcf, Matrix* M_srf) // rsf -> g, csr -> a
+   {
+       std::vector<int> adr;
+       int N = M_srcf->dim;
+       // подсчитываем число элементов в каждой строчке
+       adr.resize(N, 0);
+
+       for (int i = 0; i < N; i++)
+       {
+           adr[i] += 1; // диагональ
+           // верхний треугольник
+           for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
+               adr[M_srcf->jg[j]]++;
+       }
        // ia
-       ia[0] = 0;
-       for (i = 0; i < nb; i++)
-           ia[i + 1] = ia[i] + adr[i];
+       M_srf->ig[0] = 0;
+       for (int i = 0; i < N; i++)
+          M_srf->ig[i + 1] = M_srf->ig[i] + adr[i];
 
        // ja,  a
-       for (i = 0; i < ig[nb] + nb; i++)
-           a[i] = 0;
+       for (int i = 0; i < M_srcf->ig[N] + N; i++)
+          M_srf->gg[i] = 0;
 
-       for (i = 0; i < nb; i++)
-           adr[i] = ia[i]; // в какую позицию заносить значение
+       for (int i = 0; i < N; i++)
+           adr[i] = M_srf->ig[i]; // в какую позицию заносить значение
 
        // диагональ
-       for (i = 0; i < nb; i++)
+       for (int i = 0; i < N; i++)
        {
-           ja[adr[i]] = i;
-           a[adr[i]] = di[i];
+          M_srf->jg[adr[i]] = i;
+          M_srf->gg[adr[i]] = M_srcf->di[i];
            adr[i]++;
        }
 
        // верхний треугольник
-       for (i = 0; i < nb; i++)
+       for (int i = 0; i < N; i++)
        {
-           for (j = ig[i]; j <= ig[i + 1] - 1; j++)
+           for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
            {
-               k = jg[j];
-               ja[adr[k]] = i;
-               a[adr[k]] = gg[j];
+               int k = M_srcf->jg[j];
+               M_srf->jg[adr[k]] = i;
+               M_srf->gg[adr[k]] = M_srcf->u[j];
                
                adr[k]++;
            }
        }
    }
 
+   void EqualizeRSFToCSR(Matrix* M_srcf, Matrix* M_srf)
+   {
+      std::vector<int> adr;
+      int N = M_srcf->dim;
+      // подсчитываем число элементов в каждой строчке
+      adr.resize(N, 0);
+
+      for (int i = 0; i < N; i++)
+      {
+         adr[i] += 1; // диагональ
+         // верхний треугольник
+         for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
+            adr[M_srcf->jg[j]]++;
+      }
+
+      for (int i = 0; i < N; i++)
+         adr[i] = M_srf->ig[i]; // в какую позицию заносить значение
+
+      // диагональ
+      for (int i = 0; i < N; i++)
+      {
+         M_srf->gg[adr[i]] = M_srcf->di[i];
+         adr[i]++;
+      }
+
+      // верхний треугольник
+      for (int i = 0; i < N; i++)
+      {
+         for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
+         {
+            int k = M_srcf->jg[j];
+            M_srf->gg[adr[k]] = M_srcf->u[j];
+            adr[k]++;
+         }
+      }
+   }
 
    Matrix* MakeSparseProfileFormatFromRCF(Matrix* M)
    {
@@ -234,7 +267,6 @@ namespace maths
          for (size_t i = 0; i < M->dim; i++)
          {
             real sum = 0;
-#pragma omp parallel for reduction(+:sum)
             for (int j = 0; j < M->dim; j++)
                sum += M->dense[i][j] * b[j];
             v[i] = sum;
@@ -254,7 +286,17 @@ namespace maths
                v[M->jg[j]] += M->u[j] * b[i];
             }
          break;
+      case SparseRow:
+         for (int i = 0; i < M->dim; i++)
+         {
+            real sum = 0.;
+            for (int k = M->ig[i]; k < M->ig[i + 1]; k++)
+               sum += M->gg[k] * b[M->jg[k]];
 
+            v[i] = sum;
+         }
+
+         break;
       }
    }
 
@@ -276,6 +318,21 @@ namespace maths
       for (int i = 0; i < v.size(); i++)
          sum += v[i] * u[i];
       return sum;
+   }
+
+   void SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b)
+   {
+
+      std::vector<real> y, & x = q;
+      real res = 0;
+      y.resize(M->dim, 0);
+      MatxVec(y, M, x);
+      for (size_t i = 0; i < M->dim; i++)
+         y[i] -= b[i];
+      res = sqrt(scalar(y, y) / scalar(b, b));
+
+      std::cout << "res: " << res << '\n';
+      std::cout << "(N = " << M->dim << "): ";
    }
 
    void SolveSLAE_LOS(Matrix* M, std::vector<real>& q, std::vector<real>& b)
@@ -305,7 +362,6 @@ namespace maths
          alpha = scalar(p, r) / skp;
 
          real xsum = 0., rsum = 0.; 
-#pragma omp parallel for reduction(+:xsum,rsum)
          for (i = 0; i < M->dim; i++)
          {
             xsum += alpha * z[i];
@@ -315,7 +371,6 @@ namespace maths
          r[i] -= rsum;
          MatxVec(Ar, M, r);
          beta = -scalar(p, Ar) / skp;
-#pragma omp parallel for
          for (i = 0; i < M->dim; i++)
          {
             z[i] = r[i] + beta * z[i];
@@ -328,34 +383,31 @@ namespace maths
 
    void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b)
    {
-       MKL_INT64 n = 0;
-       MKL_INT64 mtype = 2; // real and symmetric positive definite
-       MKL_INT64 nrhs = 1;
-       void* pt[64];
-       MKL_INT64 maxfct = 1;
-       MKL_INT64 mnum = 1;
-       MKL_INT64 msglvl = 1;
-       MKL_INT64 phase = 13;
-       MKL_INT64* perm = NULL;
-       MKL_INT64 iparam[64];
-       MKL_INT64 info = -100;
+      MKL_INT64 n = 0;
+      MKL_INT64 mtype = 2; // real and symmetric positive definite
+      MKL_INT64 nrhs = 1;
+      void* pt[64];
+      MKL_INT64 maxfct = 1;
+      MKL_INT64 mnum = 1;
+      MKL_INT64 msglvl = 1;
+      MKL_INT64 phase = 13;
+      MKL_INT64* perm = NULL;
+      MKL_INT64 iparam[64];
+      MKL_INT64 info = -100;
 
-       Matrix* B = MakeSparseRowFormatFromRCF(M);
+      std::vector<MKL_INT64> ia, ja;
 
-       PARDISO_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
-           B->gg.data(), (MKL_INT64*)B->ig.data(), (MKL_INT64*)B->jg.data(), perm,
-           &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
+      ia.resize(M->ig.size());
+      ja.resize(M->jg.size());
+      for (int i = 0; i < M->ig.size(); i++) // MKL_INT64 <- int
+         ia[i] = M->ig[i];
+      for (int i = 0; i < M->jg.size(); i++)
+         ja[i] = M->jg[i];
 
-       std::vector<real> y, & x = q;
-       real res = 0;
-       y.resize(M->dim, 0);
-       MatxVec(y, M, x);
-       for (size_t i = 0; i < M->dim; i++)
-           y[i] -= b[i];
-       res = sqrt(scalar(y, y) / scalar(b, b));
-
-       std::cout << "res: " << res << '\n';
-       std::cout << "(N = " << M->dim << "): ";
+      PARDISO_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
+          M->gg.data(), ia.data(), ja.data(), perm,
+          &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
+      SLAEResidualOutput(q, M, b);
 
    }
 
@@ -370,7 +422,7 @@ namespace maths
       std::clock_t start = clock();
 
       if (LU == nullptr)
-         MakeLU(LU, A);
+         MakeLUFromRCF(LU, A);
 
       SolveForL(y, b, LU);
       SolveForU(x, y, LU);
@@ -378,18 +430,11 @@ namespace maths
 
       std::clock_t end = clock();
 
-      real res = 0;
-      y.resize(A->dim, 0);
-      MatxVec(y, A, x);
-      for (size_t i = 0; i < A->dim; i++)
-         y[i] -= b[i];
-      res = sqrt(scalar(y, y) / scalar(b, b));
-
-      std::cout << res << '\n';
+      SLAEResidualOutput(q, A, b);
       std::cout << "Work time (N = " << A->dim << "): " << end - start << "ms [" << (end - start) / 1000 << "s] (" << (end - start) / 60000 << "m)\n";
-   }
+}
 
-   void MakeLU(Matrix*& LU, Matrix* A)
+   void MakeLUFromRCF(Matrix*& LU, Matrix* A)
    {
       switch (A->format)
       {
@@ -403,7 +448,6 @@ namespace maths
                if (i <= j) // U
                {
                   real sum = 0.;
-                  //#pragma omp parallel for reduction (+:sum)
                   for (int k = 0; k < i; k++)
                      sum += LU->dense[i][k] * LU->dense[k][j];
                   LU->dense[i][j] = A->dense[i][j] - sum;
@@ -412,7 +456,6 @@ namespace maths
                else // L
                {
                   real sum = 0.;
-                  //#pragma omp parallel for reduction (+:sum)
                   for (int k = 0; k < j; k++)
                      sum += LU->dense[i][k] * LU->dense[k][j];
                   LU->dense[i][j] = (A->dense[i][j] - sum) / LU->dense[j][j];
@@ -527,6 +570,7 @@ namespace maths
 
       }
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
+      SLAEResidualOutput(q, A, b);
       delete SQ;
    }
 
@@ -569,6 +613,8 @@ namespace maths
             res += b[i] - Ar[i];
       }
       copy(q, q2);
+
+      SLAEResidualOutput(q, M, b);
    }
 
    void WriteMatrix(Matrix* M)
@@ -692,23 +738,12 @@ namespace maths
             for (int i = 0; i < M->dim; i++)
             {
                real sum = 0;
-               //#pragma omp parallel for reduction (+:sum)
                for (int j = 0; j < i; j++)
                   sum += q[j] * M->dense[i][j];
                q[i] = b[i] - sum;
             }
             break;
          case SparseProfile:
-
-            //for (int i = 0; i < M->dim; i++)
-            //{
-            //   int k = i - (M->ig[i + 1] - M->ig[i]);
-            //   real sum = 0;
-            //   for (int j = M->ig[i]; j < M->ig[i + 1]; j++, k++)
-            //      sum += q[k] * M->l[j];
-            //
-            //   q[i] = b[i] - sum;
-            //}
             for (int i = 0; i < M->dim; i++)
             {
                int k = i - (M->ig[i + 1] - M->ig[i]);
@@ -740,7 +775,6 @@ namespace maths
          for (int i = M->dim - 1; i >= 0; i--)
          {
             real sum = b[i];
-            //#pragma omp parallel for reduction(-:sum)
             for (int j = i + 1; j < M->dim; j++)
                sum -= q[j] * M->dense[i][j];
             q[i] = sum / M->dense[i][i];
@@ -748,18 +782,6 @@ namespace maths
          break;
 
       case SparseProfile:
-         //for (int i = M->dim - 1; i >= 0; i--)
-         //{
-         //   real sum = b[i];
-         //   q[i] += b[i]
-         //   int j = i - (M->ig[i + 1] - M->ig[i]);
-         //   for (int k = M->ig[i]; k < M->ig[i + 1]; k++, j++)
-         //      q[j] -= M->u[k] * q[j];
-         //}
-         //
-         //for (int i = M->dim - 1; i >= 0; i--)
-         //   q[i] /= M->di[i];
-
          for (int i = M->dim - 1; i >= 0; i--)
          {
             //real sum = b[i];
