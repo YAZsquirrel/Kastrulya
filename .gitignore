@@ -364,3 +364,6 @@ FodyWeavers.xsd
 /Kastrulya/Results
 /Kastrulya/matrix.txt
 /Kastrulya/libs
+/GPUCache
+/Kastrulya/VTune Profiler Results/Kastrulya
+/Kastrulya/speed.txt
