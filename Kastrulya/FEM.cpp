@@ -14,7 +14,7 @@ FEM::FEM()
    A = MakeSparseRowColumnFormat(4, mesh->knots.size(), mesh);
 
    MakeSparseRowFormatFromRCF(A, A_srf);
-    //A => G, M, Gv
+   //A => G, M, Gv
    {
       G = new Matrix();
       Gv = new Matrix();

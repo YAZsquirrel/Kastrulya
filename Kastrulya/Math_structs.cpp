@@ -383,7 +383,7 @@ namespace maths
 
    void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b)
    {
-      MKL_INT64 n = 0;
+      MKL_INT64 n = M->dim;
       MKL_INT64 mtype = 2; // real and symmetric positive definite
       MKL_INT64 nrhs = 1;
       void* pt[64];
@@ -403,11 +403,13 @@ namespace maths
          ia[i] = M->ig[i];
       for (int i = 0; i < M->jg.size(); i++)
          ja[i] = M->jg[i];
+      for (int i = 0; i < q.size(); i++)
+         q[i] = 0.;
 
-      PARDISO_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
+      pardiso_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
           M->gg.data(), ia.data(), ja.data(), perm,
           &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
-      SLAEResidualOutput(q, M, b);
+      //SLAEResidualOutput(q, M, b);
 
    }
 
