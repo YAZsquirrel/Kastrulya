@@ -18,6 +18,9 @@ namespace maths {
       std::vector<std::vector<real>> dense;
       size_t dim = 0;
       MatrixFormat format = MatrixFormat::Dense;
+
+      Matrix(MatrixFormat _format = Dense) : format(_format)
+      {}
    };
 
    Matrix* MakeSparseRowColumnFormat(int localsize, int size, Mesh* mesh); // RCF

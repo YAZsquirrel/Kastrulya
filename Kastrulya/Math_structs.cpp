@@ -22,7 +22,7 @@ namespace maths
                if (Elem.knots_num[i] > Elem.knots_num[j])
                   map[Elem.knots_num[i]].insert(Elem.knots_num[j]);
 
-      Matrix* M = new Matrix;
+      Matrix* M = new Matrix(MatrixFormat::SparseRowColumn);
       M->dim = size;
       M->ig.resize(size + 1, 0);
 
@@ -41,7 +41,6 @@ namespace maths
       M->l.resize(M->ig[size], 0.);
       M->u.resize(M->ig[size], 0.);
       M->di.resize(size, 0.);
-      M->format = MatrixFormat::SparseRowColumn;
       return M;
 
    }
@@ -56,30 +55,21 @@ namespace maths
       return A;
    }
 
-   void MakeSparseRowFormatFromRCF(Matrix* M, Matrix*& M_srf)
+   void MakeSparseRowFormatFromRCF(Matrix* M_rcf, Matrix*& M_srf)
    {
-       Matrix* SRF = M_srf = new Matrix();
+       M_srf = new Matrix(MatrixFormat::SparseRow);
 
-       SRF->dim = M->dim;
-       SRF->format = MatrixFormat::SparseRow;
+       int n = M_srf->dim = M_rcf->dim;
 
-       SRF->ig.resize(SRF->dim + 1);
-       SRF->jg.resize(M->ig[SRF->dim] + SRF->dim);
-       SRF->gg.resize(M->ig[SRF->dim] + SRF->dim, 0);
-       copy(SRF->di, M->di);
+       M_srf->ig.resize(n + 1);
+       M_srf->jg.resize(M_rcf->ig[n] + n);
+       M_srf->gg.resize(M_rcf->ig[n] + n, 0);
+       copy(M_srf->di, M_rcf->di);
 
-       std::ofstream logfile;
-       logfile.open("pardiso64.log");
-       if (!logfile)
-       {
-          std::cerr << "Cannot open pardiso64.log\n";
-          return;
-       }
-
-       ConvertFromSRCFToSRF(M, SRF);
+       ConvertFromSRCFToSRF(M_rcf, M_srf);
    }
 
-   void ConvertFromSRCFToSRF(Matrix* M_srcf, Matrix* M_srf) // rsf -> g, csr -> a
+   void ConvertFromSRCFToSRF(Matrix* M_srcf, Matrix* M_srf)// srcf - g, srf - a
    {
        std::vector<int> adr;
        int N = M_srcf->dim;
@@ -166,7 +156,7 @@ namespace maths
 
    Matrix* MakeSparseProfileFormatFromRCF(Matrix* M)
    {
-      Matrix *N = new Matrix;
+      Matrix *N = new Matrix(MatrixFormat::SparseProfile);
       N->di.resize(M->dim);
       N->dim = M->dim;
       for (int i = 0; i < M->dim; i++)
@@ -218,7 +208,6 @@ namespace maths
       }
       N->ig[M->dim] = count;
 
-      N->format = SparseProfile;
       return N;
    }
 
@@ -259,7 +248,7 @@ namespace maths
          
    }
 
-   void MatxVec(std::vector<real>& v, Matrix* M, std::vector<real>& b) // v = M*b
+   void MatxVec(std::vector<real>& v, Matrix* M, std::vector<real>& b) // v = M_rcf*b
    {
       switch (M->format)
       {
@@ -383,6 +372,15 @@ namespace maths
 
    void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b)
    {
+
+      std::ofstream logfile;
+      logfile.open("pardiso64.log");
+      if (!logfile)
+      {
+         std::cerr << "Cannot open pardiso64.log\n";
+         logfile.close();
+      }
+
       MKL_INT64 n = M->dim;
       MKL_INT64 mtype = 2; // real and symmetric positive definite
       MKL_INT64 nrhs = 1;
@@ -391,7 +389,7 @@ namespace maths
       MKL_INT64 mnum = 1;
       MKL_INT64 msglvl = 1;
       MKL_INT64 phase = 13;
-      MKL_INT64* perm = NULL;
+      MKL_INT64* perm = new MKL_INT64[n];
       MKL_INT64 iparam[64];
       MKL_INT64 info = -100;
 
@@ -400,16 +398,28 @@ namespace maths
       ia.resize(M->ig.size());
       ja.resize(M->jg.size());
       for (int i = 0; i < M->ig.size(); i++) // MKL_INT64 <- int
-         ia[i] = M->ig[i];
+         ia[i] = M->ig[i] + 1;
       for (int i = 0; i < M->jg.size(); i++)
-         ja[i] = M->jg[i];
+         ja[i] = M->jg[i] + 1;
       for (int i = 0; i < q.size(); i++)
          q[i] = 0.;
+      MKL_INT64 *ja_ptr = ja.data(), *ia_ptr = ia.data();
+      real *b_ptr = b.data(), *q_ptr = q.data(), *gg_ptr = M->gg.data();
 
       pardiso_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
-          M->gg.data(), ia.data(), ja.data(), perm,
-          &nrhs, iparam, &msglvl, b.data(), q.data(), &info);
-      //SLAEResidualOutput(q, M, b);
+                  gg_ptr, ia_ptr, ja_ptr,
+                  perm, &nrhs, iparam, &msglvl, 
+                  (void*)b_ptr, (void*)q_ptr,
+                  &info);
+                  
+
+      std::cout << info << '\n';
+      logfile << info << '\n';
+      logfile.close();
+      logfile.clear();
+      if (perm) { delete[] perm; perm = NULL; }
+
+      //SLAEResidualOutput(q, M_rcf, b);
 
    }
 
@@ -551,7 +561,7 @@ namespace maths
             r[i] -= alpha * p[i];                    
          }
 
-         //MatxVec(Ar, M, r);                        
+         //MatxVec(Ar, M_rcf, r);                        
          //SolveLLT(t1, Ar, SQ);                   //// S1*A*Q1*rk = t1 =>        
          SolveForL(t1, r, SQ);                        // t2 = Q1*rk -> Q*t2 = rk
          MatxVec(At1, A, t1);                       // A*t2 = At

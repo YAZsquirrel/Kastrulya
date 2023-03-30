@@ -16,9 +16,9 @@ FEM::FEM()
    MakeSparseRowFormatFromRCF(A, A_srf);
    //A => G, M, Gv
    {
-      G = new Matrix();
-      Gv = new Matrix();
-      M = new Matrix();
+      G = new Matrix(A->format);
+      Gv = new Matrix(A->format);
+      M = new Matrix(A->format);
       Gv->dim = G->dim = M->dim = A->dim;
       M->ig.resize(A->ig.size());
       G->ig.resize(A->ig.size());
@@ -41,7 +41,6 @@ FEM::FEM()
       M->u.resize(A->u.size());
       G->u.resize(A->u.size());
       Gv->u.resize(A->u.size());
-      M->format = G->format = Gv->format = SparseRowColumn;
    }
 
     
@@ -243,7 +242,7 @@ void FEM::AddSecondBounds(real time)
       if (isRadiusAxis)
       {
          h = r2 - r1;
-         h2 = pow(h, 2.);
+         h2 = h * h;
          real h2_4 = h*h/4.,
               hr_3 = h*r1/3.;
          localMb[0][0] = hr_3      + h2_4 / 3.;  localMb[0][1] = hr_3 / 2. + h2_4 / 3.;
@@ -252,7 +251,7 @@ void FEM::AddSecondBounds(real time)
       else
       {
          h = z2 - z1;
-         h2 = pow(h, 2.);
+         h2 = h * h;
          real rh_3 = r1 * h / 3.;
          localMb[0][0] = rh_3;       localMb[0][1] = rh_3 / 2.;
          localMb[1][0] = rh_3 / 2.;  localMb[1][1] = rh_3;
@@ -370,7 +369,9 @@ void FEM::AssembleMatricies(bool isTimed, real time)
             A->dense[i][j] = mulM * M->dense[i][j] + G->dense[i][j] + mulGx * Gv->dense[i][j];
 
       break;
+
    case SparseProfile:
+   case SparseRow:
       break;
 
    case SparseRowColumn:
