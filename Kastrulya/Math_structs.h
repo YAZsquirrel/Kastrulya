@@ -4,7 +4,6 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <mkl_pardiso.h>
 
 typedef double real;
 
@@ -21,6 +20,13 @@ namespace maths {
 
       Matrix(MatrixFormat _format = Dense) : format(_format)
       {}
+      ~Matrix()
+      {
+         l.clear(), u.clear(), di.clear(), gg.clear(), ig.clear(), jg.clear();
+         for (int i = 0; i < dense.size(); i++)
+            dense[i].clear();
+         dense.clear();
+      }
    };
 
    Matrix* MakeSparseRowColumnFormat(int localsize, int size, Mesh* mesh); // RCF
@@ -35,19 +41,18 @@ namespace maths {
    void AddElement(Matrix* M, int i, int j, real elem);
    void MatxVec(std::vector<real>& v, Matrix* A, std::vector<real>& b);
    void SolveSLAE_LOS(Matrix* M, std::vector<real>& q, std::vector<real>& b);
-   void SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b);
    void SolveSLAE_PARDISO(Matrix* M, std::vector<real>& q, std::vector<real>& b);
-   void SolveSLAE_LOSnKholessky(Matrix* M, std::vector<real>& q, std::vector<real>& b);
+   void SolveSLAE_predet_LOS(Matrix* M, std::vector<real>& q, std::vector<real>& b);
    void SolveSLAE_Relax(Matrix* M, std::vector<real>& q, std::vector<real>& b, real w);
    void SolveSLAE_LU(Matrix *&LUp, Matrix* M, std::vector<real>& q, std::vector<real>& b);
    void MakeLUFromRCF(Matrix*& LU, maths::Matrix* A);
    void WriteMatrix(Matrix* M);
    void MatSymmetrisation(Matrix* M, std::vector<real>& b, int i);
-   Matrix* MakeKholessky(Matrix* A);
+   Matrix* MakeHolessky(Matrix* A);
    void SolveForL(std::vector<real>& q, std::vector<real>& b, Matrix* M);
    void SolveForU(std::vector<real>& q, std::vector<real>& b, Matrix* M);
 
-   void SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b);
+   real SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b);
 
    void ConvertFromSRCFToSRF(Matrix* M_rsf, Matrix* M_csr); 
    void EqualizeRSFToCSR(Matrix* M_srcf, Matrix* M_srf);

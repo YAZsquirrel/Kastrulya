@@ -5,8 +5,8 @@
 #include <atomic>
 #include <numeric>
 #include <array>
-#include <time.h>
-
+#include <mkl_pardiso.h>
+#include <unordered_set>
 
 namespace maths
 {
@@ -69,55 +69,7 @@ namespace maths
        ConvertFromSRCFToSRF(M_rcf, M_srf);
    }
 
-   void ConvertFromSRCFToSRF(Matrix* M_srcf, Matrix* M_srf)// srcf - g, srf - a
-   {
-       std::vector<int> adr;
-       int N = M_srcf->dim;
-       // подсчитываем число элементов в каждой строчке
-       adr.resize(N, 0);
-
-       for (int i = 0; i < N; i++)
-       {
-           adr[i] += 1; // диагональ
-           // верхний треугольник
-           for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
-               adr[M_srcf->jg[j]]++;
-       }
-       // ia
-       M_srf->ig[0] = 0;
-       for (int i = 0; i < N; i++)
-          M_srf->ig[i + 1] = M_srf->ig[i] + adr[i];
-
-       // ja,  a
-       for (int i = 0; i < M_srcf->ig[N] + N; i++)
-          M_srf->gg[i] = 0;
-
-       for (int i = 0; i < N; i++)
-           adr[i] = M_srf->ig[i]; // в какую позицию заносить значение
-
-       // диагональ
-       for (int i = 0; i < N; i++)
-       {
-          M_srf->jg[adr[i]] = i;
-          M_srf->gg[adr[i]] = M_srcf->di[i];
-           adr[i]++;
-       }
-
-       // верхний треугольник
-       for (int i = 0; i < N; i++)
-       {
-           for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
-           {
-               int k = M_srcf->jg[j];
-               M_srf->jg[adr[k]] = i;
-               M_srf->gg[adr[k]] = M_srcf->u[j];
-               
-               adr[k]++;
-           }
-       }
-   }
-
-   void EqualizeRSFToCSR(Matrix* M_srcf, Matrix* M_srf)
+   void ConvertFromSRCFToSRF(Matrix* M_srcf, Matrix* M_srf) // rsf -> g, csr -> a
    {
       std::vector<int> adr;
       int N = M_srcf->dim;
@@ -131,25 +83,51 @@ namespace maths
          for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
             adr[M_srcf->jg[j]]++;
       }
+      // ia
+      M_srf->ig[0] = 0;
+      for (int i = 0; i < N; i++)
+         M_srf->ig[i + 1] = M_srf->ig[i] + adr[i];
 
       for (int i = 0; i < N; i++)
-         adr[i] = M_srf->ig[i]; // в какую позицию заносить значение
+         adr[i] = M_srf->ig[i];
 
-      // диагональ
+      int jbuf, gbuf;
+      for (int i = 0; i < N; i++)
+      {
+         M_srf->jg[adr[i]] = i;
+         adr[i]++;
+         for (int jrc = M_srcf->ig[i], jr = M_srf->ig[i]; jrc < M_srcf->ig[i + 1]; jrc++, jr++)
+         {
+            jbuf = M_srcf->jg[jrc];
+            M_srf->jg[adr[jbuf]] = i;
+            adr[jbuf]++;
+         }
+      }
+   }
+
+   void EqualizeRSFToCSR(Matrix* M_srcf, Matrix* M_srf)
+   {
+      std::vector<int> adr;
+      int N = M_srcf->dim;
+      // подсчитываем число элементов в каждой строчке
+      adr.resize(N, 0);
+
+      for (int i = 0; i < N; i++)
+         adr[i] = M_srf->ig[i];
+
+      int jbuf;
+      double gbuf;
       for (int i = 0; i < N; i++)
       {
          M_srf->gg[adr[i]] = M_srcf->di[i];
          adr[i]++;
-      }
-
-      // верхний треугольник
-      for (int i = 0; i < N; i++)
-      {
-         for (int j = M_srcf->ig[i]; j < M_srcf->ig[i + 1]; j++)
+         for (int jrc = M_srcf->ig[i], jr = M_srf->ig[i]; jrc < M_srcf->ig[i + 1]; jrc++, jr++)
          {
-            int k = M_srcf->jg[j];
-            M_srf->gg[adr[k]] = M_srcf->u[j];
-            adr[k]++;
+
+            jbuf = M_srcf->jg[jrc];
+            gbuf = M_srcf->l[jrc];
+            M_srf->gg[adr[jbuf]] = gbuf;
+            adr[jbuf]++;
          }
       }
    }
@@ -175,7 +153,7 @@ namespace maths
          col = M->jg[M->ig[i]];
          for (int j = M->ig[i]; j < M->ig[i + 1]; j++)
          {
-            // i - row, _ja[j] - col
+            // i - row, _ja[ii] - col
             if (col == M->jg[j])
             {
                N->l.push_back(M->l[j]);
@@ -269,10 +247,10 @@ namespace maths
             v[i] = M->di[i] * b[i];
 
          for (int i = 0; i < M->dim; i++)
-            for (int j = M->ig[i]; j < M->ig[i + 1]; j++) // -1?
+            for (int ii = M->ig[i]; ii < M->ig[i + 1]; ii++) // -1?
             {
-               v[i] += M->l[j] * b[M->jg[j]];
-               v[M->jg[j]] += M->u[j] * b[i];
+               v[i] += M->l[ii] * b[M->jg[ii]];
+               v[M->jg[ii]] += M->u[ii] * b[i];
             }
          break;
       case SparseRow:
@@ -309,19 +287,16 @@ namespace maths
       return sum;
    }
 
-   void SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b)
+   real SLAEResidualOutput(std::vector<real>& q, maths::Matrix* M, std::vector<real>& b)
    {
-
       std::vector<real> y, & x = q;
-      real res = 0;
       y.resize(M->dim, 0);
       MatxVec(y, M, x);
       for (size_t i = 0; i < M->dim; i++)
          y[i] -= b[i];
-      res = sqrt(scalar(y, y) / scalar(b, b));
+      return sqrt(scalar(y, y)) / sqrt(scalar(b, b));
 
-      std::cout << "res: " << res << '\n';
-      std::cout << "(N = " << M->dim << "): ";
+      //std::cout << "res: " << res << '\n';
    }
 
    void SolveSLAE_LOS(Matrix* M, std::vector<real>& q, std::vector<real>& b)
@@ -337,7 +312,6 @@ namespace maths
       int i, k;
       //x = q;
 
-      real lastres;
       MatxVec(Ar, M, x);
       for (i = 0; i < M->dim; i++)
          z[i] = r[i] = b[i] - Ar[i];
@@ -349,15 +323,11 @@ namespace maths
       {
          skp = scalar(p, p);
          alpha = scalar(p, r) / skp;
-
-         real xsum = 0., rsum = 0.; 
          for (i = 0; i < M->dim; i++)
          {
-            xsum += alpha * z[i];
-            rsum += alpha * p[i];
+            x[i] += alpha * z[i];
+            r[i] -= alpha * p[i];
          }
-         x[i] += xsum;
-         r[i] -= rsum;
          MatxVec(Ar, M, r);
          beta = -scalar(p, Ar) / skp;
          for (i = 0; i < M->dim; i++)
@@ -384,13 +354,13 @@ namespace maths
       MKL_INT64 n = M->dim;
       MKL_INT64 mtype = 2; // real and symmetric positive definite
       MKL_INT64 nrhs = 1;
-      void* pt[64];
+      void* pt[64]{};
       MKL_INT64 maxfct = 1;
       MKL_INT64 mnum = 1;
-      MKL_INT64 msglvl = 1;
+      MKL_INT64 msglvl = 0;
       MKL_INT64 phase = 13;
-      MKL_INT64* perm = new MKL_INT64[n];
-      MKL_INT64 iparam[64];
+      MKL_INT64* perm = new MKL_INT64[n]{};
+      MKL_INT64 iparam[64]{};
       MKL_INT64 info = -100;
 
       std::vector<MKL_INT64> ia, ja;
@@ -401,26 +371,19 @@ namespace maths
          ia[i] = M->ig[i] + 1;
       for (int i = 0; i < M->jg.size(); i++)
          ja[i] = M->jg[i] + 1;
-      for (int i = 0; i < q.size(); i++)
-         q[i] = 0.;
-      MKL_INT64 *ja_ptr = ja.data(), *ia_ptr = ia.data();
-      real *b_ptr = b.data(), *q_ptr = q.data(), *gg_ptr = M->gg.data();
+      //for (int i = 0; i < q.size(); i++)
+      //   q[i] = 0.;
 
       pardiso_64(pt, &maxfct, &mnum, &mtype, &phase, &n,
-                  gg_ptr, ia_ptr, ja_ptr,
+         M->gg.data(), ia.data(), ja.data(),
                   perm, &nrhs, iparam, &msglvl, 
-                  (void*)b_ptr, (void*)q_ptr,
+                  (void*)b.data(), (void*)q.data(),
                   &info);
                   
-
-      std::cout << info << '\n';
       logfile << info << '\n';
       logfile.close();
       logfile.clear();
       if (perm) { delete[] perm; perm = NULL; }
-
-      //SLAEResidualOutput(q, M_rcf, b);
-
    }
 
    void SolveSLAE_LU(Matrix*& LU, Matrix* A, std::vector<real>& q, std::vector<real>& b)
@@ -495,7 +458,7 @@ namespace maths
                {
                   int j0j = j - (LU->ig[j + 1] - LU->ig[j]);
                   int jjbeg = j0 < j0j ? j0j : j0; // max (j0, j0j)
-                  int jjend = j < i - 1 ? j : i - 1; // min (j, i - 1)
+                  int jjend = j < i - 1 ? j : i - 1; // min (ii, i - 1)
                   for (int k = 0; k < jjend - jjbeg; k++)
                   {
                      int ind_prev = LU->ig[j] + jjbeg - j0j + k;
@@ -520,69 +483,69 @@ namespace maths
       }
    }
 
-   void SolveSLAE_LOSnKholessky(Matrix* A, std::vector<real>& q, std::vector<real>& b)
+   void SolveSLAE_predet_LOS(Matrix* A, std::vector<real>& q, std::vector<real>& b)
    {
-      std::vector<real> z, r, p, At1, t2, t1, &x = q;
+      std::vector<real> z, r, p, AQr, t, SAQr, &x = q;
       z.resize(A->dim);
       r.resize(A->dim);
       p.resize(A->dim);
-      At1.resize(A->dim);
-      t2.resize(A->dim);
-      t1.resize(A->dim);
-      real res, alpha, beta, skp, eps = 1e-14;
+      AQr.resize(A->dim);
+      SAQr.resize(A->dim);
+      t.resize(A->dim);
+      real res, alpha, beta, pp, eps = 1e-14;
       int i, k;
       //x = q;
 
-      Matrix* SQ = MakeKholessky(A);
+      Matrix* SQ = MakeHolessky(A);
 
-      MatxVec(t1, A, x);                            
+      MatxVec(t, A, x);  // A*x0                          
       real b_norm;
 
-      for (int i = 0; i < A->dim; i++)         
-         t2[i] = b[i] - t1[i];
+      for (int i = 0; i < A->dim; i++)    //b - A*x0     
+         t[i] = b[i] - t[i];
 
-      SolveForL(r, t2, SQ);
-      SolveForU(z, r, SQ);
+      SolveForL(r, t, SQ); // r0 = 1/S * (b - Ax0) <-> S*r0 = b - A*x0 
+      SolveForU(z, r, SQ);  // z0 = 1/Q * r0 <-> Q*z0 = r0
 
-      MatxVec(t1, A, z);                            
-      SolveForL(p, t1, SQ);
+      MatxVec(t, A, z);    // A*z0                         
+      SolveForL(p, t, SQ); // p0 = 1/S * A*z0 <-> S*p0 = A*z0
 
       b_norm = sqrt(scalar(b, b));
-      res = sqrt(scalar(r, r)) / b_norm;
+      real res0 = res = scalar(r, r); //sqrt(scalar(r, r)) / b_norm;
 
-      for (k = 1; k < 100000 && res > eps; k++)
+      for (k = 1; k < 100000 && res / res0 > eps * eps; k++)
       {
-         skp = scalar(p, p);
-         alpha = scalar(p, r) / skp;               // a = (pk0, rk0) / (pk0, pk0)
+         for (int i = 0; i < A->dim; i++)
+            SAQr[i] = AQr[i] = t[i] = 0.;
 
-         for (int i = 0; i < A->dim; i++)          // xk1 = xk0 + a*zk0
-         {                                         // rk1 = rk0 - a*pk0 
-            x[i] += alpha * z[i];                     
-            r[i] -= alpha * p[i];                    
+         pp = scalar(p, p);
+         alpha = scalar(p, r) / pp;          // a = (pk0, rk0) / (pk0, pk0)
+
+         for (int i = 0; i < A->dim; i++)     // xk1 = xk0 + a*zk0
+         {                                    // rk1 = rk0 - a*pk0 
+            x[i] += alpha * z[i];               
+            r[i] -= alpha * p[i];              
          }
+                        
+         SolveForU(t, r, SQ);                 // t = 1/Q * rk <-> Q*t = rk
+         MatxVec(AQr, A, t);                  // A * t1 = AQr -> AQr = A * 1/Q * rk
+         SolveForL(SAQr, AQr, SQ);             // SAQr = 1/S AQr <-> S*SAQr = AQr -> SAQr = 1/S * A * 1/Q * rk
 
-         //MatxVec(Ar, M_rcf, r);                        
-         //SolveLLT(t1, Ar, SQ);                   //// S1*A*Q1*rk = t1 =>        
-         SolveForL(t1, r, SQ);                        // t2 = Q1*rk -> Q*t2 = rk
-         MatxVec(At1, A, t1);                       // A*t2 = At
-         SolveForU(t2, At1, SQ);                      // t1 = S1*At -> S*t1 = At
+         beta = -scalar(SAQr, p) / pp;          // beta = (pk0, t) / (pk0, pk0)          
 
-         beta = -scalar(t2, p) / skp;              // beta = (pk0, t) / (pk0, pk0)          
-
-         SolveForU(t2, r, SQ);                        // Q*zk1 = rk1
+         //SolveForU(t2, r, SQ);                 // Q*zk1 = rk1
          for (int i = 0; i < A->dim; i++)
          {
-            z[i] = t1[i] + beta * z[i];                   // zk1 += beta
-            p[i] = t2[i] + beta * p[i];
+            z[i] = t[i] + beta * z[i];        // zk1 += beta
+            p[i] = SAQr[i] + beta * p[i];
          }
          
-         res = sqrt(scalar(r, r)) / b_norm;
+         res = scalar(r, r);//sqrt(scalar(r, r)) / b_norm;
          if (res != res)
             std::cerr << "Error: NaN detected!" << std::endl;
 
       }
       std::cout << "iter: " << k << " Residual: " << res << std::endl;
-      SLAEResidualOutput(q, A, b);
       delete SQ;
    }
 
@@ -698,9 +661,9 @@ namespace maths
 
    }
 
-   Matrix* MakeKholessky(Matrix *A) 
+   Matrix* MakeHolessky(Matrix *A) 
    {
-      double sum_d, sum_l;
+
       Matrix* M = new Matrix();
       M->dim = A->dim;
       M->ig.resize(A->ig.size());
@@ -710,35 +673,49 @@ namespace maths
       M->di.resize(A->di.size());
       M->format = SparseRowColumn;
 
-      copy(M->di, A->di);
       copy(M->ig, A->ig);
       copy(M->jg, A->jg);
-      copy(M->u, A->u);
-      copy(M->l, A->l);
-      
 
-      for (int k = 0; k < A->dim; k++)
+      for (int i = 0; i < M->dim; i++)
       {
-         sum_d = 0;
-         int i_s = M->ig[k], i_e = M->ig[k + 1];
-
-         for (int i = i_s; i < i_e; i++)
+         // Sij, Qji
+         for (int ii = M->ig[i]; ii < M->ig[i + 1]; ii++) // ii -> index on row i
          {
-            sum_l = 0;
-            int j_s = M->ig[M->jg[i]], j_e = M->ig[M->jg[i] + 1];
-            for (int m = i_s; m < i; m++)
-               for (int j = j_s; j < j_e; j++)
-                  if (M->jg[m] == M->jg[j])
-                  {
-                     sum_l += M->l[m] * M->l[j];
-                     j_s++;
-                  }
-            M->l[i] = (M->l[i] - sum_l) / M->di[M->jg[i]];
-            sum_d += M->l[i] * M->l[i];
-         }
-         M->di[k] = sqrt(abs(M->di[k] - sum_d));
+            int j = M->jg[ii];
 
+            real sumS = 0.;
+            real sumQ = 0.;
+            std::vector<int*> ks;
+            int is = M->ig[i], ie = M->ig[i + 1];
+            int js = M->ig[j], je = M->ig[j + 1];
+
+            for (int ki = is; ki < ie; ki++)
+               for (int kj = js; kj < je; kj++)
+                  if (M->jg[ki] == M->jg[kj])
+                     ks.push_back(new int[2] { ki, kj }); // find intersection of nonzero elem's ii
+
+            for (auto k : ks)
+            {
+               int ki = k[0], kj = k[1];
+               sumS += M->l[ki] * M->u[kj];
+               sumQ += M->l[kj] * M->u[ki];
+               delete[] k;
+            }
+
+            M->l[ii] = (A->l[ii] - sumS) / M->di[j];
+            M->u[ii] = (A->u[ii] - sumQ) / M->di[j];
+
+         }
+         //Sii
+         {
+            real sumd = 0.;
+            for (int ii = M->ig[i]; ii < M->ig[i + 1]; ii++)
+               sumd += M->l[ii] * M->u[ii];
+
+            M->di[i] = sqrt(A->di[i] - sumd);
+         }
       }
+
       return M;
    }
 
@@ -767,14 +744,15 @@ namespace maths
             }
             break;
          case SparseRowColumn:
-            for (int k = 1, k1 = 0; k < M->dim; k++, k1++)
+            for (size_t k = 0; k < M->dim; k++)
             {
-               double sum = 0;
-               for (int i = M->ig[k1]; i < M->ig[k]; i++)
+               real sum = 0.;
+               for (size_t i = M->ig[k]; i < M->ig[k + 1]; i++)
                   sum += M->l[i] * q[M->jg[i]];
 
-               q[k1] = b[k1] - sum;
+               q[k] = (b[k] - sum) / M->di[k];
             }
+
             break;
 
       }
@@ -784,7 +762,7 @@ namespace maths
       switch (M->format)
       {
       case Dense:
-         for (int i = M->dim - 1; i >= 0; i--)
+         for (int i = M->dim - 1; i > 0; i--)
          {
             real sum = b[i];
             for (int j = i + 1; j < M->dim; j++)
@@ -794,7 +772,7 @@ namespace maths
          break;
 
       case SparseProfile:
-         for (int i = M->dim - 1; i >= 0; i--)
+         for (int i = M->dim - 1; i > 0; i--)
          {
             //real sum = b[i];
             int j = i - (M->ig[i + 1] - M->ig[i]);
@@ -805,15 +783,17 @@ namespace maths
 
          break;
 
-      case SparseRowColumn: // неправильно
-         for (int i = M->dim - 1; i >= 0; i--)
+      case SparseRowColumn: 
+         copy(q, b);
+         for (int k = M->dim - 1; k >= 0; k--)
          {
-            real sum = b[i];
+            int ii = k;
+            real qii = q[k] / M->di[k];
+            q[k] = qii;
 
-            for (int j = M->ig[i]; j < M->ig[i + 1]; j++) // -1?
-               sum -= M->u[j] * q[M->jg[j]];
+            for (int i = M->ig[k]; i < M->ig[k + 1]; i++)
+               q[M->jg[i]] -= M->u[i] * qii;
 
-            q[i] = sum / M->di[i];
          }
          break;
 

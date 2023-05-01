@@ -1,5 +1,6 @@
 #include "FEM.h"
-#include <string>
+#include "TextFormat.h"
+#include <time.h>
 FEM::FEM()
 {
    std::ifstream ftime("TimeGridDescr.txt");
@@ -54,7 +55,6 @@ FEM::FEM()
 
 
    q1.resize(num_of_knots, 0.);
-   q2.resize(num_of_knots, 0.);
    b.resize(num_of_knots, 0.);
    d.resize(num_of_knots, 0.);
 
@@ -69,6 +69,9 @@ void FEM::SolveElliptic()
 
 void FEM::SolveParabolic()
 {
+   std::vector<real> q2, q3;
+   q2.resize(q1.size());
+   q3.resize(q1.size());
    //CreateSLAE();
    if (utest > 0)
 #ifdef DEBUG2
@@ -83,7 +86,7 @@ void FEM::SolveParabolic()
 
    else {
       for (int i = 0; i < q1.size(); i++)
-         q1[i] = u0;
+         q3[i] = q2[i] = q1[i] = u0;
       CreateSLAE(false);
    }
    int tn = 0;
@@ -92,10 +95,15 @@ void FEM::SolveParabolic()
    std::vector<real> zero;
    zero.resize(num_of_knots, 0.0);
 
+   clock_t begin, end;
+   std::ofstream comp_out;
+   comp_out.open("comparison.txt", std::ofstream::trunc);
+
    real t = 0;
    for (; abs(t - dt - t_last) > 1e-12; t += dt, tn++)
    {
       copy(b, zero);
+      copy(d, zero);
       if (tn > 0)
       {
          for (int i = 0; i < num_of_FE; i++)
@@ -104,25 +112,65 @@ void FEM::SolveParabolic()
             Createb(mesh->elems[i], t);
          }
          AssembleMatricies(true, t);
-         //SolveSLAE_LOSnKholessky(A, q1, d);
+         //SolveSLAE_predet_LOS(A, q1, d);
 #ifdef DENSE
          SolveSLAE_LU(A, q1, d);
-         //SolveSLAE_LOS(A, q1, d);
 #else
+         std::cout << "Solve w/ pardiso\n";
+         begin = clock();
          EqualizeRSFToCSR(A, A_srf);
          SolveSLAE_PARDISO(A_srf, q1, d);
-#endif // DENSE
+         end = clock();
+         std::cout << "Solve time: " << real(end - begin) / CLOCKS_PER_SEC << "s , res:" << ' ' << SLAEResidualOutput(q1, A, d) << '\n';
 
-         //copy(q1, q2);
+         comp_out << real(end - begin) / CLOCKS_PER_SEC << ' ' << SLAEResidualOutput(q1, A, d) << ' ';
+
+         std::cout << /*text::colorize("--------", "green", text::Bold)*/ "-------" << std::endl;
+         std::cout << "Solve w/ LOS predetermined\n";
+         begin = clock();
+         SolveSLAE_predet_LOS(A, q2, d);
+         end = clock();
+         std::cout << "Solve time: " << real(end - begin) / CLOCKS_PER_SEC << "s , res:" << ' ' << SLAEResidualOutput(q2, A, d) << '\n';
+
+         comp_out << real(end - begin) / CLOCKS_PER_SEC << ' ' << SLAEResidualOutput(q2, A, d) << ' ';
+         
+         std::cout << /*text::colorize("--------", "green", text::Bold)*/ "-------" << std::endl;
+         std::cout << "Solve w/ LOS\n";
+         begin = clock();
+         SolveSLAE_LOS(A, q3, d);
+         end = clock();
+         std::cout << "Solve time: " << real(end - begin) / CLOCKS_PER_SEC << "s , res:" << ' ' << SLAEResidualOutput(q3, A, d) << '\n';
+
+         comp_out << real(end - begin) / CLOCKS_PER_SEC << ' ' << SLAEResidualOutput(q3, A, d) << '\n';
+
+#endif // DENSE 
+         real dq = 0;
+         for (size_t i = 0; i < num_of_knots; i++)
+            dq += abs(q1[i] - q3[i]);
+         std::cout << "--------\n";
+         std::cout << "Average difference (pardiso/LOS): " << dq / num_of_knots << '\n';
+
+         dq = 0;
+         for (size_t i = 0; i < num_of_knots; i++)
+            dq += abs(q1[i] - q2[i]);
+         std::cout << "--------\n";
+         std::cout << "Average difference (pardiso/preLOS): " << dq / num_of_knots << '\n';
+
+
+         comp_out << dq / num_of_knots << '\n';
 
       }  
+      std::cout << "^^^^^^^^^^^^^^^^\n";
       std::cout << "Layer " << tn << ", Time: " << t << "s, done." << std::endl;
+      std::cout << "\n----------------\n";
       std::ofstream out(str + std::to_string(tn) + ".txt", std::ofstream::in);
       out.close();
       out.open(str + std::to_string(tn) + ".txt", std::ofstream::trunc);
       Output(out);
       out.close();
    }
+
+   comp_out.close();
 
    if (tn == 0)
    {
@@ -133,15 +181,29 @@ void FEM::SolveParabolic()
       out.close();
    }
 
+
    std::ofstream out("elements.txt", std::ofstream::in);
    out.close();
    out.open("elements.txt", std::ofstream::trunc);
 
-   for (int i =0 ; i < num_of_FE; i++)
+   for (int i = 0; i < num_of_FE; i++)
    {
       for (int j = 0; j < 4; j++)
-         out << mesh->elems[i].knots_num[j];
+         out << mesh->elems[i].knots_num[j] << ' ';
       out << '\n';
+   }
+   out.close();
+
+   out.open("knots.txt", std::ofstream::in);
+   out.close();
+   out.open("knots.txt", std::ofstream::trunc);
+   for (int i = 0; i < num_of_knots; i++)
+   {
+      out << std::defaultfloat;
+      out << mesh->knots[i].x;
+      out.width(15);
+      out << mesh->knots[i].y;
+      out.width(30);
    }
    out.close();
 
@@ -153,14 +215,7 @@ void FEM::Output(std::ofstream& out)
    for (int i = 0; i < num_of_knots; i++)
    {
       out << std::defaultfloat;
-      out << mesh->knots[i].x;
-      out.width(15);
-      out << mesh->knots[i].y;
-      out.width(30);
-      out << std::scientific;
-      out.width(15);
       out << q1[i];
-      out.width(15);
       out << "\n";
    }
 

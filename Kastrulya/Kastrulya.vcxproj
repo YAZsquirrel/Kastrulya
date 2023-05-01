@@ -145,6 +145,7 @@
     <ClInclude Include="FEM.h" />
     <ClInclude Include="GridMaker.h" />
     <ClInclude Include="Math_structs.h" />
+    <ClInclude Include="TextFormat.h" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="GridDescription.txt" />
