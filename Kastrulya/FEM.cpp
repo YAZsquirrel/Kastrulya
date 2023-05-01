@@ -145,17 +145,19 @@ void FEM::SolveParabolic()
 
 #endif // DENSE 
          real dq = 0;
-         for (size_t i = 0; i < num_of_knots; i++)
-            dq += abs(q1[i] - q3[i]);
-         std::cout << "--------\n";
-         std::cout << "Average difference (pardiso/LOS): " << dq / num_of_knots << '\n';
 
-         dq = 0;
          for (size_t i = 0; i < num_of_knots; i++)
             dq += abs(q1[i] - q2[i]);
          std::cout << "--------\n";
          std::cout << "Average difference (pardiso/preLOS): " << dq / num_of_knots << '\n';
 
+         comp_out << dq / num_of_knots << '\n';
+
+         dq = 0;
+         for (size_t i = 0; i < num_of_knots; i++)
+            dq += abs(q1[i] - q3[i]);
+         std::cout << "--------\n";
+         std::cout << "Average difference (pardiso/LOS): " << dq / num_of_knots << '\n';
 
          comp_out << dq / num_of_knots << '\n';
 
